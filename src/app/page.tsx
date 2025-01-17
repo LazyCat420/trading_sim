@@ -1,12 +1,11 @@
+import StockDashboard from '@/components/StockDashboard'
 import AiChat from '@/components/AiChat'
 
 export default function Home() {
   return (
-    <main className="min-h-screen p-6 bg-gray-100">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">AI Chat</h1>
-        <AiChat />
-      </div>
+    <main className="flex min-h-screen flex-col items-center justify-between p-24">
+      <StockDashboard />
+      <AiChat />
     </main>
   )
 } 
