@@ -9,14 +9,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const response = await fetch(
-      `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${process.env.ALPHAVANTAGE_API_KEY}`
-    )
-
+    const response = await fetch(`http://localhost:8000/stock/${symbol}`)
     const data = await response.json()
 
-    if (!data["Global Quote"] || Object.keys(data["Global Quote"]).length === 0) {
-      return NextResponse.json({ error: 'Invalid symbol or API limit reached' }, { status: 404 })
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch stock data')
     }
 
     return NextResponse.json(data)

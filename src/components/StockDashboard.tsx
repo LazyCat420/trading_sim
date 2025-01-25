@@ -1,19 +1,33 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import React, { useState, useCallback, useEffect } from 'react'
+import { CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { CollapsibleCard } from "@/components/ui/collapsible-card"
 
-interface Stock {
-  id: number
+interface StockData {
   symbol: string
-  buyPrice: number
-  quantity: number
   currentPrice: number
-  lastUpdated: string
+  change: number
+  changePercent: number
+  volume: number
+  marketCap: number | string
+  peRatio?: number
+  dividendYield?: number
+  fiftyTwoWeekHigh?: number
+  fiftyTwoWeekLow?: number
+  analystRating?: {
+    firm: string
+    grade: string
+    action: string
+  }
+  shortName?: string
+  longName?: string
+  sector?: string
+  industry?: string
 }
 
 interface NewsItem {
@@ -25,238 +39,211 @@ interface NewsItem {
 }
 
 export default function StockDashboard() {
-  const [stocks, setStocks] = useState<Stock[]>([])
-  const [newStock, setNewStock] = useState({ symbol: '', buyPrice: '', quantity: '' })
-  const [newsItems, setNewsItems] = useState<NewsItem[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [searchSymbol, setSearchSymbol] = useState('')
+  const [stocks, setStocks] = useState<StockData[]>([])
+  const [news, setNews] = useState<NewsItem[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
-  const fetchStockPrice = async (symbol: string) => {
+  const fetchNews = async (symbols: string[]) => {
+    if (symbols.length === 0) return
+    
+    try {
+      const response = await fetch(`/api/news?symbol=${symbols.join(',')}`)
+      const data = await response.json()
+      
+      if (data.error) {
+        setError(data.error)
+        return
+      }
+      
+      setNews(data.feed)
+    } catch (error) {
+      setError('Failed to fetch news')
+    }
+  }
+
+  const fetchStockPrice = async (symbol: string): Promise<StockData | null> => {
     try {
       const response = await fetch(`/api/stock?symbol=${symbol}`)
       const data = await response.json()
       
       if (data.error) {
-        throw new Error(data.error)
+        setError(data.error)
+        return null
       }
       
-      return Number(data["Global Quote"]["05. price"])
+      return data
     } catch (error) {
-      console.error('Error fetching stock price:', error)
-      throw error
+      setError('Failed to fetch stock price')
+      return null
     }
   }
 
-  const fetchNews = async (symbol?: string) => {
+  const handleAddStock = async () => {
+    if (!searchSymbol) return
+    
+    // Check if stock is already in the list
+    if (stocks.some(stock => stock.symbol === searchSymbol.toUpperCase())) {
+      setError('Stock is already in your list')
+      return
+    }
+    
+    setIsLoading(true)
+    setError(null)
+    
     try {
-      const response = await fetch(`/api/news${symbol ? `?symbol=${symbol}` : ''}`)
-      const data = await response.json()
-      
-      if (data.error) {
-        throw new Error(data.error)
+      const data = await fetchStockPrice(searchSymbol.toUpperCase())
+      if (data) {
+        setStocks(prev => [...prev, data])
+        // Fetch news for all stocks including the new one
+        await fetchNews([...stocks.map(s => s.symbol), searchSymbol.toUpperCase()])
+        setSearchSymbol('')
       }
-      
-      setNewsItems(data.feed || [])
     } catch (error) {
-      console.error('Error fetching news:', error)
-      setError('Failed to fetch news')
+      setError('Failed to add stock')
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  useEffect(() => {
-    fetchNews()
-    const newsInterval = setInterval(() => {
-      fetchNews()
-    }, 300000) // Refresh news every 5 minutes
-
-    return () => clearInterval(newsInterval)
-  }, [])
-
-  useEffect(() => {
+  const handleRefreshAll = async () => {
     if (stocks.length === 0) return
-
-    const updateStockPrices = async () => {
-      try {
-        const updatedStocks = await Promise.all(
-          stocks.map(async (stock) => {
-            try {
-              const currentPrice = await fetchStockPrice(stock.symbol)
-              return {
-                ...stock,
-                currentPrice,
-                lastUpdated: new Date().toLocaleTimeString()
-              }
-            } catch (error) {
-              return stock
-            }
-          })
-        )
-        setStocks(updatedStocks)
-      } catch (error) {
-        console.error('Error updating stock prices:', error)
-      }
-    }
-
-    updateStockPrices()
-    const priceInterval = setInterval(updateStockPrices, 60000) // Update prices every minute
-
-    return () => clearInterval(priceInterval)
-  }, [stocks])
-
-  const handleAddStock = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (newStock.symbol && newStock.buyPrice && newStock.quantity) {
-      setLoading(true)
-      setError('')
+    
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      const updatedStocks = await Promise.all(
+        stocks.map(stock => fetchStockPrice(stock.symbol))
+      )
       
-      try {
-        const currentPrice = await fetchStockPrice(newStock.symbol)
-        
-        setStocks([...stocks, {
-          id: Date.now(),
-          symbol: newStock.symbol.toUpperCase(),
-          buyPrice: Number(newStock.buyPrice),
-          quantity: Number(newStock.quantity),
-          currentPrice,
-          lastUpdated: new Date().toLocaleTimeString()
-        }])
-        
-        setNewStock({ symbol: '', buyPrice: '', quantity: '' })
-        fetchNews(newStock.symbol) // Fetch news for the newly added stock
-      } catch (error) {
-        setError('Failed to add stock. Please check the symbol and try again.')
-      } finally {
-        setLoading(false)
-      }
+      setStocks(updatedStocks.filter((stock): stock is StockData => stock !== null))
+      await fetchNews(stocks.map(s => s.symbol))
+    } catch (error) {
+      setError('Failed to refresh stocks')
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value)
-    if (e.target.value) {
-      fetchNews(e.target.value)
-    } else {
-      fetchNews()
-    }
+  const handleRemoveStock = (symbol: string) => {
+    setStocks(prev => {
+      const newStocks = prev.filter(stock => stock.symbol !== symbol)
+      // Update news when removing a stock
+      fetchNews(newStocks.map(s => s.symbol))
+      return newStocks
+    })
   }
 
-  const calculateProfit = (stock: Stock) => {
-    const profit = (stock.currentPrice - stock.buyPrice) * stock.quantity
-    return profit.toFixed(2)
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleAddStock()
+    }
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Stock Market Dashboard</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-6">
-            <Label htmlFor="search">Search News</Label>
-            <Input
-              id="search"
-              value={searchTerm}
-              onChange={handleSearch}
-              placeholder="Search for stock news..."
-              className="mb-4"
-            />
-          </div>
+    <div className="p-4 space-y-4">
+      <div className="flex gap-2">
+        <Input
+          placeholder="Enter stock symbol..."
+          value={searchSymbol}
+          onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
+          onKeyPress={handleKeyPress}
+          disabled={isLoading}
+        />
+        <Button 
+          onClick={handleAddStock} 
+          disabled={isLoading}
+        >
+          {isLoading ? 'Adding...' : 'Add Stock'}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={handleRefreshAll}
+          disabled={isLoading || stocks.length === 0}
+        >
+          Refresh All
+        </Button>
+      </div>
 
-          <form onSubmit={handleAddStock} className="mb-6 grid grid-cols-4 gap-4">
-            <div>
-              <Label htmlFor="symbol">Symbol</Label>
-              <Input
-                id="symbol"
-                value={newStock.symbol}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStock({...newStock, symbol: e.target.value})}
-                placeholder="e.g., AAPL"
-              />
-            </div>
-            <div>
-              <Label htmlFor="buyPrice">Buy Price</Label>
-              <Input
-                id="buyPrice"
-                type="number"
-                value={newStock.buyPrice}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStock({...newStock, buyPrice: e.target.value})}
-                placeholder="e.g., 150.00"
-                step="0.01"
-              />
-            </div>
-            <div>
-              <Label htmlFor="quantity">Quantity</Label>
-              <Input
-                id="quantity"
-                type="number"
-                value={newStock.quantity}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStock({...newStock, quantity: e.target.value})}
-                placeholder="e.g., 10"
-              />
-            </div>
-            <div className="flex items-end">
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Adding...' : 'Add Stock'}
-              </Button>
-            </div>
-          </form>
+      {error && (
+        <div className="text-red-500 bg-red-50 p-2 rounded">{error}</div>
+      )}
 
-          {error && <p className="text-red-500 mb-4">{error}</p>}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Symbol</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Price</TableHead>
+            <TableHead>Change</TableHead>
+            <TableHead>Volume</TableHead>
+            <TableHead>Market Cap</TableHead>
+            <TableHead>P/E Ratio</TableHead>
+            <TableHead>52W High/Low</TableHead>
+            <TableHead>Analyst Rating</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {stocks.map((stock) => (
+            <TableRow key={stock.symbol}>
+              <TableCell>{stock.symbol}</TableCell>
+              <TableCell>{stock.shortName || stock.longName || 'N/A'}</TableCell>
+              <TableCell>${(stock.currentPrice || 0).toFixed(2)}</TableCell>
+              <TableCell className={stock.change >= 0 ? 'text-green-500' : 'text-red-500'}>
+                {(stock.change || 0).toFixed(2)} ({(stock.changePercent || 0).toFixed(2)}%)
+              </TableCell>
+              <TableCell>{(stock.volume || 0).toLocaleString()}</TableCell>
+              <TableCell>
+                {typeof stock.marketCap === 'number' ? 
+                  `$${(stock.marketCap / 1e9).toFixed(2)}B` : 
+                  'N/A'}
+              </TableCell>
+              <TableCell>{stock.peRatio?.toFixed(2) || 'N/A'}</TableCell>
+              <TableCell>
+                ${stock.fiftyTwoWeekHigh?.toFixed(2) || 'N/A'} / 
+                ${stock.fiftyTwoWeekLow?.toFixed(2) || 'N/A'}
+              </TableCell>
+              <TableCell>
+                {stock.analystRating ? 
+                  `${stock.analystRating.firm}: ${stock.analystRating.grade}` : 
+                  'N/A'}
+              </TableCell>
+              <TableCell>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleRemoveStock(stock.symbol)}
+                >
+                  Remove
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Symbol</TableHead>
-                <TableHead>Buy Price</TableHead>
-                <TableHead>Quantity</TableHead>
-                <TableHead>Current Price</TableHead>
-                <TableHead>Last Updated</TableHead>
-                <TableHead>Profit/Loss</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {stocks.map((stock) => (
-                <TableRow key={stock.id}>
-                  <TableCell>{stock.symbol}</TableCell>
-                  <TableCell>${stock.buyPrice.toFixed(2)}</TableCell>
-                  <TableCell>{stock.quantity}</TableCell>
-                  <TableCell>${stock.currentPrice.toFixed(2)}</TableCell>
-                  <TableCell>{stock.lastUpdated}</TableCell>
-                  <TableCell className={Number(calculateProfit(stock)) >= 0 ? 'text-green-600' : 'text-red-600'}>
-                    ${calculateProfit(stock)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Market News</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {newsItems.map((news, index) => (
-              <div key={index} className="border-b pb-4 last:border-b-0">
-                <h3 className="font-semibold mb-2">
-                  <a href={news.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600">
-                    {news.title}
-                  </a>
-                </h3>
-                <p className="text-sm text-muted-foreground mb-2">{news.summary}</p>
-                <div className="text-xs text-muted-foreground">
-                  <span>{news.source}</span>
-                  <span className="mx-2">•</span>
-                  <span>{new Date(news.time_published).toLocaleString()}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <CollapsibleCard title="Market News">
+        <div className="space-y-4">
+          {news.map((item, index) => (
+            <div key={index} className="border-b pb-4">
+              <h3 className="font-semibold">
+                <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-500">
+                  {item.title}
+                </a>
+              </h3>
+              <p className="text-sm text-gray-600">
+                {typeof item.time_published === 'number' 
+                  ? new Date(item.time_published * 1000).toLocaleString()
+                  : new Date(item.time_published).toLocaleString()} - {item.source}
+              </p>
+              <p className="mt-2">{item.summary}</p>
+            </div>
+          ))}
+        </div>
+      </CollapsibleCard>
     </div>
   )
 } 

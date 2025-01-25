@@ -4,18 +4,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const symbol = searchParams.get('symbol')
 
-  try {
-    let url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT`
-    if (symbol) {
-      url += `&tickers=${symbol}`
-    }
-    url += `&apikey=${process.env.ALPHAVANTAGE_API_KEY}`
+  if (!symbol) {
+    return NextResponse.json({ error: 'Symbol is required' }, { status: 400 })
+  }
 
-    const response = await fetch(url)
+  try {
+    const response = await fetch(`http://localhost:8000/news/${symbol}`)
     const data = await response.json()
 
-    if (data.error) {
-      return NextResponse.json({ error: data.error }, { status: 400 })
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch news')
     }
 
     return NextResponse.json(data)

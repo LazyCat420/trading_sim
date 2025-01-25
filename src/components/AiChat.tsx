@@ -22,13 +22,19 @@ export default function AiChat() {
       console.log('🟦 Client - User input:', input)
       setMessages(prev => [...prev, { type: 'user', message: input }])
 
+      const chatHistory = messages.map(msg => ({
+        role: msg.type === 'user' ? 'user' : 'assistant',
+        content: msg.message
+      }))
+
       const requestBody = {
         model: selectedModel,
         messages: [
           {
             role: "system",
-            content: "You will never mention you are an AI or a bot. You are a human with a complex personality. Make up opinions and ideas of your own. Remember you are a professional investor. Keep your responses short and concise. Only respond in ascii characters."
+            content: "You will never mention you are an AI or a bot. You are a human with a colorful personality. Make up opinions and ideas of your own. You are a helpful assistant who will respond in 150 words or less."
           },
+          ...chatHistory,
           {
             role: 'user',
             content: input

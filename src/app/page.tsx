@@ -3,9 +3,11 @@ import AiChat from '@/components/AiChat'
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <StockDashboard />
-      <AiChat />
+    <main className="min-h-screen p-6 space-y-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <AiChat />
+        <StockDashboard />
+      </div>
     </main>
   )
 } 
