@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CollapsibleCard } from "@/components/ui/collapsible-card"
+import StockChart from './StockChart'
 
 interface StockData {
   symbol: string
@@ -44,6 +45,8 @@ export default function StockDashboard() {
   const [news, setNews] = useState<NewsItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [selectedStock, setSelectedStock] = useState<string | null>(null)
+  const [stockHistory, setStockHistory] = useState<{ date: string; price: number }[]>([])
 
   const fetchNews = async (symbols: string[]) => {
     if (symbols.length === 0) return
@@ -78,6 +81,28 @@ export default function StockDashboard() {
       setError('Failed to fetch stock price')
       return null
     }
+  }
+
+  const fetchStockHistory = async (symbol: string) => {
+    try {
+      const response = await fetch(`/api/stock/history?symbol=${symbol}`)
+      const data = await response.json()
+      
+      if (data.error) {
+        setError(data.error)
+        return
+      }
+      
+      setStockHistory(data)
+    } catch (error) {
+      setError('Failed to fetch stock history')
+    }
+  }
+
+  const handleStockSelect = async (symbol: string) => {
+    setSelectedStock(symbol)
+    await fetchStockHistory(symbol)
+    await fetchNews([symbol]) // Update news for selected stock only
   }
 
   const handleAddStock = async () => {
@@ -171,6 +196,10 @@ export default function StockDashboard() {
         <div className="text-red-500 bg-red-50 p-2 rounded">{error}</div>
       )}
 
+      {selectedStock && (
+        <StockChart symbol={selectedStock} data={stockHistory} />
+      )}
+
       <Table>
         <TableHeader>
           <TableRow>
@@ -188,7 +217,11 @@ export default function StockDashboard() {
         </TableHeader>
         <TableBody>
           {stocks.map((stock) => (
-            <TableRow key={stock.symbol}>
+            <TableRow 
+              key={stock.symbol}
+              className={`cursor-pointer hover:bg-gray-50 ${selectedStock === stock.symbol ? 'bg-blue-50' : ''}`}
+              onClick={() => handleStockSelect(stock.symbol)}
+            >
               <TableCell>{stock.symbol}</TableCell>
               <TableCell>{stock.shortName || stock.longName || 'N/A'}</TableCell>
               <TableCell>${(stock.currentPrice || 0).toFixed(2)}</TableCell>
@@ -215,7 +248,10 @@ export default function StockDashboard() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => handleRemoveStock(stock.symbol)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleRemoveStock(stock.symbol)
+                  }}
                 >
                   Remove
                 </Button>
