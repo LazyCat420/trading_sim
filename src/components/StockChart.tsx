@@ -62,37 +62,82 @@ interface StockChartProps {
 
 const StockChart = ({ symbol, data }: StockChartProps) => {
   const [timeframe, setTimeframe] = useState<string>("1d")
+  const [stockData, setStockData] = useState<StockHistoryData[]>(data)
   const [dividendHistory, setDividendHistory] = useState<DividendData[]>([])
   const [similarStocks, setSimilarStocks] = useState<SimilarStock[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchStockData = async (period: string) => {
     setIsLoading(true)
+    setError(null)
     try {
-      const response = await fetch(`/api/stock/history/${symbol}?period=${period}`)
-      const historyData = await response.json()
+      console.log(`Fetching stock data for ${symbol} with period ${period}`)
+      
+      const response = await fetch(`/stock/history/${symbol}?period=${period}`)
+      console.log('Response status:', response.status)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Error response:', errorText)
+        throw new Error(`Failed to fetch data: ${response.statusText}`)
+      }
+      
+      const rawText = await response.text()
+      console.log('Raw response:', rawText)
+      
+      let historyData
+      try {
+        historyData = JSON.parse(rawText)
+        console.log('Parsed history data:', historyData)
+      } catch (parseError) {
+        console.error('JSON Parse Error:', parseError)
+        throw new Error('Invalid JSON response from server')
+      }
+
+      if (!Array.isArray(historyData)) {
+        console.error('Invalid data format:', historyData)
+        throw new Error('Invalid data format received')
+      }
+
+      // Update the chart data
+      setStockData(historyData)
       
       // Fetch dividend history
-      const dividendResponse = await fetch(`/api/stock/dividends/${symbol}`)
-      const dividendData = await dividendResponse.json()
+      const dividendResponse = await fetch(`/stock/dividends/${symbol}`)
+      if (!dividendResponse.ok) {
+        console.error('Failed to fetch dividend data:', await dividendResponse.text())
+      } else {
+        const dividendData = await dividendResponse.json()
+        setDividendHistory(dividendData)
+      }
       
       // Fetch similar stocks
-      const similarResponse = await fetch(`/api/stock/similar/${symbol}`)
-      const similarData = await response.json()
+      const similarResponse = await fetch(`/stock/similar/${symbol}`)
+      if (!similarResponse.ok) {
+        console.error('Failed to fetch similar stocks:', await similarResponse.text())
+      } else {
+        const similarData = await similarResponse.json()
+        setSimilarStocks(similarData)
+      }
       
-      setDividendHistory(dividendData)
-      setSimilarStocks(similarData)
       return historyData
     } catch (error) {
-      console.error('Error fetching stock data:', error)
+      console.error('Error in fetchStockData:', error)
+      setError(error instanceof Error ? error.message : 'Failed to fetch data')
+      throw error
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleTimeframeChange = async (newTimeframe: string) => {
-    setTimeframe(newTimeframe)
-    await fetchStockData(newTimeframe)
+    try {
+      setTimeframe(newTimeframe)
+      await fetchStockData(newTimeframe)
+    } catch (error) {
+      console.error('Error in handleTimeframeChange:', error)
+    }
   }
 
   if (!data || data.length === 0) {
@@ -113,11 +158,11 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
   const fiftyTwoWeekLow = Math.min(...data.map(d => d.low))
 
   const chartData = {
-    labels: data.map(d => d.date),
+    labels: stockData.map(d => d.date),
     datasets: [
       {
         label: 'Price',
-        data: data.map(d => d.price),
+        data: stockData.map(d => d.close),
         fill: true,
         borderColor: '#8884d8',
         backgroundColor: 'rgba(136, 132, 216, 0.3)',
