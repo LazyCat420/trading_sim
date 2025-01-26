@@ -1,18 +1,100 @@
 "use client"
 
-import React from 'react'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  ChartOptions,
+  ScaleOptions
+} from 'chart.js'
+import { Line, Bar } from 'react-chartjs-2'
+import { CollapsibleCard } from './ui/collapsible-card'
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+)
+
+interface StockHistoryData {
+  date: string
+  price: number
+  volume: number
+  high: number
+  low: number
+  open: number
+  close: number
+}
+
+interface DividendData {
+  date: string
+  dividend: number
+}
+
+interface SimilarStock {
+  symbol: string
+  name: string
+  price: number
+  marketCap: number
+}
 
 interface StockChartProps {
   symbol: string
-  data: {
-    date: string
-    price: number
-  }[]
+  data: StockHistoryData[]
 }
 
-export default function StockChart({ symbol, data }: StockChartProps) {
+const StockChart = ({ symbol, data }: StockChartProps) => {
+  const [timeframe, setTimeframe] = useState<string>("1d")
+  const [dividendHistory, setDividendHistory] = useState<DividendData[]>([])
+  const [similarStocks, setSimilarStocks] = useState<SimilarStock[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+
+  const fetchStockData = async (period: string) => {
+    setIsLoading(true)
+    try {
+      const response = await fetch(`/api/stock/history/${symbol}?period=${period}`)
+      const historyData = await response.json()
+      
+      // Fetch dividend history
+      const dividendResponse = await fetch(`/api/stock/dividends/${symbol}`)
+      const dividendData = await dividendResponse.json()
+      
+      // Fetch similar stocks
+      const similarResponse = await fetch(`/api/stock/similar/${symbol}`)
+      const similarData = await response.json()
+      
+      setDividendHistory(dividendData)
+      setSimilarStocks(similarData)
+      return historyData
+    } catch (error) {
+      console.error('Error fetching stock data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleTimeframeChange = async (newTimeframe: string) => {
+    setTimeframe(newTimeframe)
+    await fetchStockData(newTimeframe)
+  }
+
   if (!data || data.length === 0) {
     return (
       <Card>
@@ -26,32 +108,193 @@ export default function StockChart({ symbol, data }: StockChartProps) {
     )
   }
 
+  // Calculate 52-week high and low
+  const fiftyTwoWeekHigh = Math.max(...data.map(d => d.high))
+  const fiftyTwoWeekLow = Math.min(...data.map(d => d.low))
+
+  const chartData = {
+    labels: data.map(d => d.date),
+    datasets: [
+      {
+        label: 'Price',
+        data: data.map(d => d.price),
+        fill: true,
+        borderColor: '#8884d8',
+        backgroundColor: 'rgba(136, 132, 216, 0.3)',
+        tension: 0.4
+      }
+    ]
+  }
+
+  const chartOptions: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `$${context.parsed.y.toFixed(2)}`
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: {
+          maxRotation: 45,
+          minRotation: 45
+        }
+      },
+      y: {
+        ticks: {
+          callback: function(value) {
+            if (typeof value === 'number') {
+              return `$${value.toFixed(2)}`
+            }
+            return value
+          }
+        }
+      }
+    }
+  }
+
+  const dividendChartData = {
+    labels: dividendHistory.map(d => d.date),
+    datasets: [
+      {
+        label: 'Dividend',
+        data: dividendHistory.map(d => d.dividend),
+        backgroundColor: '#82ca9d'
+      }
+    ]
+  }
+
+  const dividendChartOptions: ChartOptions<'bar'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `$${context.parsed.y.toFixed(2)}`
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: {
+          maxRotation: 45,
+          minRotation: 45
+        }
+      },
+      y: {
+        ticks: {
+          callback: function(value) {
+            if (typeof value === 'number') {
+              return `$${value.toFixed(2)}`
+            }
+            return value
+          }
+        }
+      }
+    }
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{symbol} - Price History</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={data}
-              margin={{
-                top: 10,
-                right: 30,
-                left: 0,
-                bottom: 0,
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Area type="monotone" dataKey="price" stroke="#8884d8" fill="#8884d8" fillOpacity={0.3} />
-            </AreaChart>
-          </ResponsiveContainer>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex justify-between items-center">
+            <span>{symbol} - Price History</span>
+            <div className="flex gap-2">
+              <Button
+                variant={timeframe === "1d" ? "default" : "outline"}
+                onClick={() => handleTimeframeChange("1d")}
+                disabled={isLoading}
+              >
+                1D
+              </Button>
+              <Button
+                variant={timeframe === "5d" ? "default" : "outline"}
+                onClick={() => handleTimeframeChange("5d")}
+                disabled={isLoading}
+              >
+                5D
+              </Button>
+              <Button
+                variant={timeframe === "1mo" ? "default" : "outline"}
+                onClick={() => handleTimeframeChange("1mo")}
+                disabled={isLoading}
+              >
+                1M
+              </Button>
+              <Button
+                variant={timeframe === "1y" ? "default" : "outline"}
+                onClick={() => handleTimeframeChange("1y")}
+                disabled={isLoading}
+              >
+                1Y
+              </Button>
+              <Button
+                variant={timeframe === "5y" ? "default" : "outline"}
+                onClick={() => handleTimeframeChange("5y")}
+                disabled={isLoading}
+              >
+                5Y
+              </Button>
+              <Button
+                variant={timeframe === "10y" ? "default" : "outline"}
+                onClick={() => handleTimeframeChange("10y")}
+                disabled={isLoading}
+              >
+                10Y
+              </Button>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] w-full">
+            <Line data={chartData} options={chartOptions} />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="font-semibold">52 Week High:</span> ${fiftyTwoWeekHigh.toFixed(2)}
+            </div>
+            <div>
+              <span className="font-semibold">52 Week Low:</span> ${fiftyTwoWeekLow.toFixed(2)}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <CollapsibleCard title="Dividend History">
+        <div className="h-[200px] w-full">
+          <Bar data={dividendChartData} options={dividendChartOptions} />
         </div>
-      </CardContent>
-    </Card>
+      </CollapsibleCard>
+
+      <CollapsibleCard title="Similar Stocks">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {similarStocks.map((stock) => (
+            <Card key={stock.symbol}>
+              <CardContent className="p-4">
+                <h3 className="font-semibold">{stock.name} ({stock.symbol})</h3>
+                <p>Price: ${stock.price.toFixed(2)}</p>
+                <p>Market Cap: ${(stock.marketCap / 1e9).toFixed(2)}B</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CollapsibleCard>
+    </div>
   )
-} 
+}
+
+export default StockChart 

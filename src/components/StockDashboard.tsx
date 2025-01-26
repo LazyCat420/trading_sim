@@ -39,6 +39,16 @@ interface NewsItem {
   source: string
 }
 
+interface StockHistoryData {
+  date: string
+  price: number
+  volume: number
+  high: number
+  low: number
+  open: number
+  close: number
+}
+
 export default function StockDashboard() {
   const [searchSymbol, setSearchSymbol] = useState('')
   const [stocks, setStocks] = useState<StockData[]>([])
@@ -46,13 +56,13 @@ export default function StockDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
-  const [stockHistory, setStockHistory] = useState<{ date: string; price: number }[]>([])
+  const [stockHistory, setStockHistory] = useState<StockHistoryData[]>([])
 
   const fetchNews = async (symbols: string[]) => {
     if (symbols.length === 0) return
     
     try {
-      const response = await fetch(`/api/news?symbol=${symbols.join(',')}`)
+      const response = await fetch(`/news/${symbols.join(',')}`)
       const data = await response.json()
       
       if (data.error) {
@@ -68,7 +78,7 @@ export default function StockDashboard() {
 
   const fetchStockPrice = async (symbol: string): Promise<StockData | null> => {
     try {
-      const response = await fetch(`/api/stock?symbol=${symbol}`)
+      const response = await fetch(`/stock/${symbol}`)
       const data = await response.json()
       
       if (data.error) {
@@ -85,7 +95,7 @@ export default function StockDashboard() {
 
   const fetchStockHistory = async (symbol: string) => {
     try {
-      const response = await fetch(`/api/stock/history?symbol=${symbol}`)
+      const response = await fetch(`/stock/history/${symbol}`)
       const data = await response.json()
       
       if (data.error) {

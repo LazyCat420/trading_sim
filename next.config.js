@@ -18,7 +18,15 @@ const nextConfig = {
       {
         source: '/api/:path*',
         destination: 'http://10.0.0.29:11434/api/:path*'
-      }
+      },
+      {
+        source: '/stock/:path*',
+        destination: 'http://localhost:8000/stock/:path*',
+      },
+      {
+        source: '/news/:path*',
+        destination: 'http://localhost:8000/news/:path*',
+      },
     ]
   }
 }
