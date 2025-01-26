@@ -196,24 +196,114 @@ async def get_stock_data(symbol: str):
 @app.get("/news/{symbol}")
 @retry_on_failure(max_retries=3, delay=1)
 async def get_stock_news(symbol: str):
+    """Get news for a specific stock symbol."""
     try:
-        stock = yf.Ticker(symbol)
-        news = stock.news
+        formatted_symbol = format_symbol(symbol)
         
-        if not news:
+        # Use Search to get stock news
+        search_results = yf.Search(formatted_symbol, news_count=10)
+        news_items = search_results.news
+        logger.info(f"Fetched {len(news_items) if news_items else 0} news items for {formatted_symbol}")
+        
+        if not news_items:
+            logger.warning(f"No news found for {formatted_symbol}")
             return {"feed": []}
             
-        feed = [{
-            "title": item.get("title"),
-            "url": item.get("link"),
-            "time_published": item.get("providerPublishTime"),
-            "summary": item.get("summary", ""),
-            "source": item.get("publisher")
-        } for item in news]
+        # Process and validate each news item
+        feed = []
+        for item in news_items:
+            if not item:
+                continue
+                
+            # Validate and format timestamp
+            timestamp = item.get("providerPublishTime")
+            if timestamp:
+                try:
+                    # Convert Unix timestamp to ISO format
+                    from datetime import datetime
+                    publish_time = datetime.fromtimestamp(timestamp).isoformat()
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error formatting timestamp for {formatted_symbol}: {e}")
+                    continue  # Skip items with invalid timestamps
+            else:
+                continue  # Skip items without timestamps
+            
+            title = item.get("title")
+            if not title:
+                continue  # Skip items without titles
+                
+            feed.append({
+                "title": title,
+                "url": item.get("link", ""),
+                "time_published": publish_time,
+                "summary": item.get("summary", ""),
+                "source": item.get("publisher", "Unknown")
+            })
+            logger.debug(f"Added news item for {formatted_symbol}: {title[:50]}...")
         
+        # Sort by publish time, most recent first
+        feed.sort(key=lambda x: x["time_published"], reverse=True)
+        
+        logger.info(f"Returning {len(feed)} processed news items for {formatted_symbol}")
         return {"feed": feed}
     except Exception as e:
+        logger.error(f"Error fetching news for {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching news for {symbol}: {str(e)}")
+
+@app.get("/market-news")
+@retry_on_failure(max_retries=3, delay=1)
+async def get_market_news():
+    """Get general market news using market search."""
+    try:
+        # Use Search to get market news
+        search_results = yf.Search("market", news_count=20)
+        news_items = search_results.news
+        logger.info(f"Fetched {len(news_items) if news_items else 0} market news items")
+        
+        if not news_items:
+            logger.warning("No market news found")
+            return {"feed": []}
+            
+        # Process and validate each news item
+        feed = []
+        for item in news_items:
+            if not item:
+                continue
+                
+            # Validate and format timestamp
+            timestamp = item.get("providerPublishTime")
+            if timestamp:
+                try:
+                    # Convert Unix timestamp to ISO format
+                    from datetime import datetime
+                    publish_time = datetime.fromtimestamp(timestamp).isoformat()
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error formatting timestamp: {e}")
+                    continue  # Skip items with invalid timestamps
+            else:
+                continue  # Skip items without timestamps
+            
+            title = item.get("title")
+            if not title:
+                continue  # Skip items without titles
+                
+            feed.append({
+                "title": title,
+                "url": item.get("link", ""),
+                "time_published": publish_time,
+                "summary": item.get("summary", ""),
+                "source": item.get("publisher", "Unknown")
+            })
+            logger.debug(f"Added news item: {title[:50]}...")
+        
+        # Sort by publish time, most recent first
+        feed.sort(key=lambda x: x["time_published"], reverse=True)
+        
+        logger.info(f"Returning {len(feed)} processed news items")
+        return {"feed": feed}
+    except Exception as e:
+        logger.error(f"Error fetching market news: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching market news: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000) 
