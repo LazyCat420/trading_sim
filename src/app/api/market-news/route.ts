@@ -2,9 +2,22 @@ import { NextResponse } from 'next/server'
 
 const BACKEND_URL = 'http://localhost:8000'  // Updated to match Python backend port
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const response = await fetch(`${BACKEND_URL}/market-news`)
+    const { searchParams } = new URL(request.url)
+    const tickers = searchParams.get('tickers')
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+    const limit = searchParams.get('limit')
+
+    // Build query parameters for backend
+    const params = new URLSearchParams()
+    if (tickers) params.append('tickers', tickers)
+    if (from) params.append('from', from)
+    if (to) params.append('to', to)
+    if (limit) params.append('limit', limit)
+
+    const response = await fetch(`${BACKEND_URL}/market-news?${params.toString()}`)
     
     if (!response.ok) {
       const errorData = await response.json()

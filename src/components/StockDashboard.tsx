@@ -37,6 +37,8 @@ interface NewsItem {
   time_published: string
   summary: string
   source: string
+  symbol: string
+  image_url?: string
 }
 
 interface StockHistoryData {
@@ -60,29 +62,52 @@ export default function StockDashboard() {
 
   const fetchNews = async (symbols: string[]) => {
     if (symbols.length === 0) {
-      setNews([])
-      return
+      console.log('No symbols provided, clearing news');
+      setNews([]);
+      return;
     }
     
     try {
-      const response = await fetch(`/news/${symbols.join(',')}`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch news')
+      console.log('Fetching news for symbols:', symbols);
+      setIsLoading(true);
+      setError(null);
+      
+      const symbol = symbols[0]; // For now, just get news for the first symbol
+      console.log('Fetching news for symbol:', symbol);
+      
+      const response = await fetch(`/api/news?symbol=${symbol}`);
+      console.log('News API response status:', response.status);
+      
+      const data = await response.json();
+      console.log('News API response data:', data);
+      
+      if (response.ok && data.feed) {
+        const formattedNews = data.feed.map((item: {
+          title: string;
+          url: string;
+          time_published: string;
+          summary: string;
+          source: string;
+          image_url?: string;
+        }) => ({
+          ...item,
+          symbol,
+          image_url: item.image_url || null
+        }));
+        
+        console.log('Setting news feed with', formattedNews.length, 'items');
+        setNews(formattedNews);
+      } else {
+        console.error('News API error:', data.error || 'Unknown error');
+        setError(data.error || 'Failed to fetch news');
+        setNews([]);
       }
-      
-      const data = await response.json()
-      
-      if (data.error) {
-        setError(data.error)
-        setNews([])
-        return
-      }
-      
-      setNews(data.feed || [])
     } catch (error) {
-      console.error('Error fetching news:', error)
-      setError('Failed to fetch news')
-      setNews([])
+      console.error('Error fetching news:', error);
+      setError('Failed to fetch news');
+      setNews([]);
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -122,7 +147,7 @@ export default function StockDashboard() {
   const handleStockSelect = async (symbol: string) => {
     setSelectedStock(symbol)
     await fetchStockHistory(symbol)
-    await fetchNews([symbol]) // Update news for selected stock only
+    await fetchNews([symbol]) // Fetch news for selected stock only
   }
 
   const handleAddStock = async () => {
@@ -141,8 +166,8 @@ export default function StockDashboard() {
       const data = await fetchStockPrice(searchSymbol.toUpperCase())
       if (data) {
         setStocks(prev => [...prev, data])
-        // Fetch news for all stocks including the new one
-        await fetchNews([...stocks.map(s => s.symbol), searchSymbol.toUpperCase()])
+        // Select the newly added stock
+        await handleStockSelect(searchSymbol.toUpperCase())
         setSearchSymbol('')
       }
     } catch (error) {
@@ -175,8 +200,16 @@ export default function StockDashboard() {
   const handleRemoveStock = (symbol: string) => {
     setStocks(prev => {
       const newStocks = prev.filter(stock => stock.symbol !== symbol)
-      // Update news when removing a stock
-      fetchNews(newStocks.map(s => s.symbol))
+      // If removing selected stock, select first available stock or clear selection
+      if (symbol === selectedStock) {
+        const nextStock = newStocks[0]
+        if (nextStock) {
+          handleStockSelect(nextStock.symbol)
+        } else {
+          setSelectedStock(null)
+          setNews([])
+        }
+      }
       return newStocks
     })
   }
@@ -283,22 +316,36 @@ export default function StockDashboard() {
 
       <CollapsibleCard title="Market News">
         <div className="space-y-4">
-          {news && news.length > 0 ? (
+          {isLoading ? (
+            <p className="text-gray-500">Loading news...</p>
+          ) : news && news.length > 0 ? (
             news.map((item, index) => (
-              <div key={index} className="border-b pb-4">
-                <h3 className="font-semibold">
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-500">
-                    {item.title}
-                  </a>
-                </h3>
-                <p className="text-sm text-gray-600">
-                  {new Date(item.time_published).toLocaleString()} - {item.source}
-                </p>
-                <p className="mt-2">{item.summary}</p>
+              <div key={index} className="border-b pb-4 flex gap-4">
+                {item.image_url && (
+                  <div className="flex-shrink-0">
+                    <img 
+                      src={item.image_url} 
+                      alt={item.title} 
+                      className="w-32 h-24 object-cover rounded"
+                    />
+                  </div>
+                )}
+                <div className="flex-grow">
+                  <h3 className="font-semibold">
+                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-500">
+                      {item.title}
+                    </a>
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {item.symbol && <span className="font-medium">{item.symbol} - </span>}
+                    {new Date(item.time_published).toLocaleString()} - {item.source}
+                  </p>
+                  <p className="mt-2">{item.summary}</p>
+                </div>
               </div>
             ))
           ) : (
-            <p className="text-gray-500">No news available</p>
+            <p className="text-gray-500">No market news available</p>
           )}
         </div>
       </CollapsibleCard>
