@@ -4,6 +4,12 @@ import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
@@ -55,6 +61,14 @@ interface SimilarStock {
   marketCap: number
 }
 
+interface NewsItem {
+  title: string
+  url: string
+  time_published: string
+  summary: string
+  source: string
+}
+
 interface StockChartProps {
   symbol: string
   data: StockHistoryData[]
@@ -67,6 +81,10 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
   const [similarStocks, setSimilarStocks] = useState<SimilarStock[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedDateNews, setSelectedDateNews] = useState<NewsItem[]>([])
+  const [isNewsModalOpen, setIsNewsModalOpen] = useState(false)
+  const [isLoadingNews, setIsLoadingNews] = useState(false)
 
   const fetchStockData = async (period: string) => {
     setIsLoading(true)
@@ -140,6 +158,36 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
     }
   }
 
+  const fetchNewsForDate = async (date: string) => {
+    setIsLoadingNews(true)
+    try {
+      console.log(`Fetching news for ${symbol} on ${date}`)
+      const response = await fetch(`/news/${symbol}?date=${date}`)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch news: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      setSelectedDateNews(data.feed || [])
+    } catch (error) {
+      console.error('Error fetching news:', error)
+      setSelectedDateNews([])
+    } finally {
+      setIsLoadingNews(false)
+    }
+  }
+
+  const handleChartClick = async (event: any, elements: any[]) => {
+    if (elements.length > 0) {
+      const dataIndex = elements[0].index
+      const clickedDate = stockData[dataIndex].date
+      setSelectedDate(clickedDate)
+      await fetchNewsForDate(clickedDate)
+      setIsNewsModalOpen(true)
+    }
+  }
+
   if (!data || data.length === 0) {
     return (
       <Card>
@@ -203,7 +251,8 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
           }
         }
       }
-    }
+    },
+    onClick: handleChartClick
   }
 
   const dividendChartData = {
@@ -338,6 +387,45 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
           ))}
         </div>
       </CollapsibleCard>
+
+      <Dialog open={isNewsModalOpen} onOpenChange={setIsNewsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {symbol} News - {selectedDate ? new Date(selectedDate).toLocaleDateString() : ''}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {isLoadingNews ? (
+            <div className="flex items-center justify-center p-4">
+              Loading news...
+            </div>
+          ) : selectedDateNews.length > 0 ? (
+            <div className="space-y-4">
+              {selectedDateNews.map((news, index) => (
+                <div key={index} className="border-b pb-4">
+                  <a 
+                    href={news.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-lg font-semibold hover:text-blue-600"
+                  >
+                    {news.title}
+                  </a>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {news.source} - {new Date(news.time_published).toLocaleString()}
+                  </p>
+                  <p className="mt-2">{news.summary}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center p-4">
+              No news available for this date
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -59,20 +59,30 @@ export default function StockDashboard() {
   const [stockHistory, setStockHistory] = useState<StockHistoryData[]>([])
 
   const fetchNews = async (symbols: string[]) => {
-    if (symbols.length === 0) return
+    if (symbols.length === 0) {
+      setNews([])
+      return
+    }
     
     try {
       const response = await fetch(`/news/${symbols.join(',')}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch news')
+      }
+      
       const data = await response.json()
       
       if (data.error) {
         setError(data.error)
+        setNews([])
         return
       }
       
-      setNews(data.feed)
+      setNews(data.feed || [])
     } catch (error) {
+      console.error('Error fetching news:', error)
       setError('Failed to fetch news')
+      setNews([])
     }
   }
 
@@ -273,21 +283,23 @@ export default function StockDashboard() {
 
       <CollapsibleCard title="Market News">
         <div className="space-y-4">
-          {news.map((item, index) => (
-            <div key={index} className="border-b pb-4">
-              <h3 className="font-semibold">
-                <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-500">
-                  {item.title}
-                </a>
-              </h3>
-              <p className="text-sm text-gray-600">
-                {typeof item.time_published === 'number' 
-                  ? new Date(item.time_published * 1000).toLocaleString()
-                  : new Date(item.time_published).toLocaleString()} - {item.source}
-              </p>
-              <p className="mt-2">{item.summary}</p>
-            </div>
-          ))}
+          {news && news.length > 0 ? (
+            news.map((item, index) => (
+              <div key={index} className="border-b pb-4">
+                <h3 className="font-semibold">
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-500">
+                    {item.title}
+                  </a>
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {new Date(item.time_published).toLocaleString()} - {item.source}
+                </p>
+                <p className="mt-2">{item.summary}</p>
+              </div>
+            ))
+          ) : (
+            <p className="text-gray-500">No news available</p>
+          )}
         </div>
       </CollapsibleCard>
     </div>
