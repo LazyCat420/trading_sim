@@ -18,6 +18,15 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Verify API keys are loaded
+alpha_vantage_key = os.getenv('ALPHAVANTAGE_API_KEY')
+
+if not alpha_vantage_key:
+    logger.error("Alpha Vantage API key not found in environment variables")
+    raise ValueError("Alpha Vantage API key not found")
+else:
+    logger.info("Alpha Vantage API key loaded successfully")
+
 app = FastAPI()
 
 # Enable CORS
@@ -292,11 +301,6 @@ async def get_stock_news(symbol: str, date: str = None):
         # Use yfinance to get news
         stock = yf.Ticker(formatted_symbol)
         news_items = stock.news
-        
-        # Filter news by date if provided
-        if date:
-            target_date = datetime.strptime(date.split()[0], "%Y-%m-%d").date()
-            news_items = [item for item in news_items if datetime.fromtimestamp(item.get("providerPublishTime", 0)).date() == target_date]
         
         logger.info(f"Retrieved {len(news_items)} news items from yfinance")
         
