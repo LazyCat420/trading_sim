@@ -195,16 +195,16 @@ async def get_stock_history(
         formatted_data = []
         for index, row in history.iterrows():
             try:
-                data_point = {
-                    "date": index.strftime("%Y-%m-%d %H:%M:%S"),
-                    "price": float(row["Close"]),  # Keep price for backward compatibility
-                    "volume": int(row["Volume"]),
-                    "high": float(row["High"]),
-                    "low": float(row["Low"]),
-                    "open": float(row["Open"]),
-                    "close": float(row["Close"])
-                }
-                formatted_data.append(data_point)
+                data_point = StockHistory(
+                    date=index.strftime("%Y-%m-%d %H:%M:%S"),
+                    price=float(row["Close"]),  # Keep price for backward compatibility
+                    volume=int(row["Volume"]),
+                    high=float(row["High"]),
+                    low=float(row["Low"]),
+                    open=float(row["Open"]),
+                    close=float(row["Close"])
+                )
+                formatted_data.append(data_point.dict())
             except Exception as e:
                 logger.error(f"Error formatting row: {e}")
                 logger.error(f"Problematic row: {row}")
@@ -215,7 +215,8 @@ async def get_stock_history(
             logger.info(f"First data point: {formatted_data[0]}")
             logger.info(f"Last data point: {formatted_data[-1]}")
             
-        return formatted_data
+        # Return a list of dictionaries
+        return {"data": formatted_data}
         
     except HTTPException as he:
         raise he

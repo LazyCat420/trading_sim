@@ -70,13 +70,15 @@ interface NewsItem {
 }
 
 interface StockChartProps {
-  symbol: string
-  data: StockHistoryData[]
+  symbol: string;
+  data: {
+    data: StockHistoryData[];
+  };
 }
 
-const StockChart = ({ symbol, data }: StockChartProps) => {
+export default function StockChart({ symbol, data }: StockChartProps) {
   const [timeframe, setTimeframe] = useState<string>("1d")
-  const [stockData, setStockData] = useState<StockHistoryData[]>(data)
+  const [stockData, setStockData] = useState<StockHistoryData[]>(data.data)
   const [dividendHistory, setDividendHistory] = useState<DividendData[]>([])
   const [similarStocks, setSimilarStocks] = useState<SimilarStock[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -188,7 +190,7 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
     }
   }
 
-  if (!data || data.length === 0) {
+  if (!data?.data || data.data.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -201,11 +203,13 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
     )
   }
 
-  // Calculate 52-week high and low
-  const fiftyTwoWeekHigh = Math.max(...data.map(d => d.high))
-  const fiftyTwoWeekLow = Math.min(...data.map(d => d.low))
+  const chartData = data.data;
 
-  const chartData = {
+  // Calculate 52-week high and low
+  const fiftyTwoWeekHigh = Math.max(...chartData.map((d: StockHistoryData) => d.high))
+  const fiftyTwoWeekLow = Math.min(...chartData.map((d: StockHistoryData) => d.low))
+
+  const chartConfig = {
     labels: stockData.map(d => d.date),
     datasets: [
       {
@@ -355,7 +359,7 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
         </CardHeader>
         <CardContent>
           <div className="h-[300px] w-full">
-            <Line data={chartData} options={chartOptions} />
+            <Line data={chartConfig} options={chartOptions} />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
             <div>
@@ -428,6 +432,4 @@ const StockChart = ({ symbol, data }: StockChartProps) => {
       </Dialog>
     </div>
   )
-}
-
-export default StockChart 
+} 

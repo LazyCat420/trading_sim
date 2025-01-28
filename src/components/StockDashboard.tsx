@@ -51,6 +51,10 @@ interface StockHistoryData {
   close: number
 }
 
+interface StockHistoryResponse {
+  data: StockHistoryData[];
+}
+
 export default function StockDashboard() {
   const [searchSymbol, setSearchSymbol] = useState('')
   const [stocks, setStocks] = useState<StockData[]>([])
@@ -58,7 +62,7 @@ export default function StockDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
-  const [stockHistory, setStockHistory] = useState<StockHistoryData[]>([])
+  const [stockHistory, setStockHistory] = useState<StockHistoryResponse>({ data: [] })
 
   const fetchNews = async (symbols: string[]) => {
     if (symbols.length === 0) {
