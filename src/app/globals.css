@@ -74,3 +74,30 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .chatbox {
+    @apply bg-white shadow-lg rounded-lg overflow-hidden;
+  }
+  .chatbox-header {
+    @apply bg-primary text-primary-foreground p-4;
+  }
+  .chatbox-body {
+    @apply p-4 space-y-4 overflow-y-auto;
+  }
+  .chatbox-footer {
+    @apply border-t p-4 bg-gray-50;
+  }
+  .message {
+    @apply rounded-lg px-4 py-3 max-w-[80%] shadow-sm;
+  }
+  .message-user {
+    @apply bg-blue-500 text-white;
+  }
+  .message-assistant {
+    @apply bg-gray-50 border border-gray-100;
+  }
+  .link {
+    @apply underline text-blue-600 hover:text-blue-800;
+  }
+}

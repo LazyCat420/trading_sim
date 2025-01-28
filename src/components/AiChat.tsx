@@ -5,6 +5,11 @@ import { useState } from 'react'
 interface Message {
   type: 'user' | 'assistant'
   message: string
+  links?: {
+    url: string
+    title?: string
+    image?: string
+  }[]
 }
 
 export default function AiChat() {
@@ -117,6 +122,17 @@ export default function AiChat() {
         }
       }
 
+      const { processedMessage, links } = processMessageContent(fullResponse)
+      setMessages(prev => {
+        const newMessages = [...prev]
+        const lastMessage = newMessages[newMessages.length - 1]
+        if (lastMessage.type === 'assistant') {
+          lastMessage.message = processedMessage
+          lastMessage.links = links
+        }
+        return newMessages
+      })
+
     } catch (error) {
       console.error('🟥 Client - Error:', error)
       setMessages(prev => [...prev, { 
@@ -130,8 +146,8 @@ export default function AiChat() {
   }
 
   return (
-    <div className="flex flex-col h-[600px] bg-white rounded-lg shadow">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="chatbox flex flex-col h-[600px]">
+      <div className="chatbox-body">
         {messages.map((message, index) => (
           <div
             key={index}
@@ -140,43 +156,100 @@ export default function AiChat() {
             }`}
           >
             <div
-              className={`rounded-lg px-4 py-2 max-w-sm ${
+              className={`message ${
                 message.type === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100'
+                  ? 'message-user'
+                  : 'message-assistant'
               }`}
             >
-              {message.message || '...'}
+              <MessageContent content={message.message || '...'} />
+              {message.links && message.links.length > 0 && (
+                <div className="mt-3 space-y-2 border-t border-gray-200 pt-2">
+                  {message.links.map((link, linkIndex) => (
+                    <div key={linkIndex} className="flex flex-col space-y-2">
+                      <div 
+                        className={`
+                          text-sm p-2 rounded-md transition-all cursor-pointer
+                          ${message.type === 'user' 
+                            ? 'text-white hover:bg-blue-600 active:bg-blue-700' 
+                            : 'text-blue-600 hover:bg-blue-50 active:bg-blue-100'
+                          }
+                          hover:scale-[1.02] active:scale-[0.98]
+                          flex items-center gap-2
+                        `}
+                        onClick={() => {
+                          if (link.url) {
+                            window.open(link.url, '_blank', 'noopener,noreferrer');
+                          }
+                        }}
+                      >
+                        <span className="inline-flex items-center justify-center bg-opacity-20 rounded-full h-5 w-5 text-xs font-medium bg-current">
+                          {linkIndex + 1}
+                        </span>
+                        <span className="flex-1 break-all">
+                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="link">
+                            {link.title || link.url}
+                          </a>
+                        </span>
+                        <svg className="w-4 h-4 flex-shrink-0 opacity-75" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </div>
+                      {link.image && (
+                        <div 
+                          className="mt-1 rounded-md overflow-hidden border border-gray-200 hover:border-blue-300 transition-colors cursor-pointer"
+                          onClick={() => {
+                            if (link.url) {
+                              window.open(link.url, '_blank', 'noopener,noreferrer');
+                            }
+                          }}
+                        >
+                          <img
+                            src={link.image}
+                            alt="Link preview"
+                            className="w-full max-w-[200px] h-auto object-cover hover:opacity-90 transition-opacity"
+                            loading="lazy"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
         {isLoading && (
-          <div className="text-center">
-            <span className="animate-pulse">...</span>
+          <div className="flex justify-center">
+            <div className="bg-gray-100 rounded-lg px-4 py-2">
+              <span className="inline-block animate-bounce">•</span>
+              <span className="inline-block animate-bounce delay-100">•</span>
+              <span className="inline-block animate-bounce delay-200">•</span>
+            </div>
           </div>
         )}
       </div>
-      <div className="border-t p-4">
+      <div className="chatbox-footer">
         <select 
           value={selectedModel} 
           onChange={(e) => setSelectedModel(e.target.value)}
-          className="mb-4 p-2 border rounded"
+          className="mb-4 p-2 border rounded-lg w-full md:w-auto text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         >
           <option value="llama3.2:latest">Llama 3.2</option>
         </select>
-        <form onSubmit={handleSubmit} className="flex space-x-4">
+        <form onSubmit={handleSubmit} className="flex space-x-3">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="Type your message..."
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading}
-            className="rounded-lg bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="rounded-lg bg-blue-500 px-6 py-2 text-white font-medium hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Send
           </button>
@@ -184,4 +257,48 @@ export default function AiChat() {
       </div>
     </div>
   )
-} 
+}
+
+const MessageContent = ({ content }: { content: string }) => {
+  const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+  const parts = content.split(urlRegex);
+  
+  return (
+    <div className="whitespace-pre-wrap break-words">
+      {parts.map((part, i) => {
+        if (part.match(urlRegex)) {
+          const cleanUrl = part.trim().replace(/[.,;]$/, '');
+          return (
+            <a
+              key={i}
+              href={cleanUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:text-blue-700 underline"
+              onClick={(e) => {
+                e.preventDefault();
+                window.open(cleanUrl, '_blank', 'noopener,noreferrer');
+              }}
+            >
+              {cleanUrl}
+            </a>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </div>
+  );
+};
+
+const processMessageContent = (message: string) => {
+  const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+  const urls = message.match(urlRegex) || [];
+  
+  return { 
+    processedMessage: message,
+    links: urls.map(url => ({ 
+      url: url.trim().replace(/[.,;]$/, ''),
+      title: url.trim().replace(/[.,;]$/, '') 
+    }))
+  };
+}; 
