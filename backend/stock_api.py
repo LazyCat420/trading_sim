@@ -1,6 +1,4 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import yfinance as yf
+from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -10,6 +8,7 @@ import logging
 import aiohttp
 import os
 from dotenv import load_dotenv
+import yfinance as yf
 
 # Load environment variables
 load_dotenv()
@@ -27,16 +26,7 @@ if not alpha_vantage_key:
 else:
     logger.info("Alpha Vantage API key loaded successfully")
 
-app = FastAPI()
-
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+router = APIRouter()
 
 def retry_on_failure(max_retries=3, delay=1):
     def decorator(func):
@@ -101,7 +91,7 @@ class StockInfo(BaseModel):
     currency: Optional[str] = None
     analystRating: Optional[dict] = None
 
-@app.get("/stock/{symbol}")
+@router.get("/{symbol}")
 @retry_on_failure(max_retries=3, delay=1)
 async def get_stock_info(symbol: str):
     try:
@@ -173,7 +163,7 @@ async def get_stock_info(symbol: str):
         logger.error(f"Error fetching data for {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/stock/history/{symbol}")
+@router.get("/history/{symbol}")
 @retry_on_failure(max_retries=3, delay=1)
 async def get_stock_history(
     symbol: str,
@@ -234,7 +224,7 @@ async def get_stock_history(
         logger.exception("Full traceback:")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/stock/similar/{symbol}")
+@router.get("/similar/{symbol}")
 @retry_on_failure(max_retries=3, delay=1)
 async def get_similar_stocks(symbol: str):
     try:
@@ -272,7 +262,7 @@ async def get_similar_stocks(symbol: str):
         logger.error(f"Error finding similar stocks for {symbol}: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/stock/dividends/{symbol}")
+@router.get("/dividends/{symbol}")
 @retry_on_failure(max_retries=3, delay=1)
 async def get_dividend_history(symbol: str):
     try:
@@ -291,7 +281,7 @@ async def get_dividend_history(symbol: str):
         logger.error(f"Error fetching dividends for {symbol}: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/news/{symbol}")
+@router.get("/news/{symbol}")
 @retry_on_failure(max_retries=3, delay=1)
 async def get_stock_news(symbol: str, date: str = None):
     try:
@@ -300,7 +290,7 @@ async def get_stock_news(symbol: str, date: str = None):
         
         # Use yfinance to get news
         stock = yf.Ticker(formatted_symbol)
-        news_items = stock.news
+        news_items = stock.news or []  # Ensure we have a list even if news is None
         
         logger.info(f"Retrieved {len(news_items)} news items from yfinance")
         
@@ -308,13 +298,19 @@ async def get_stock_news(symbol: str, date: str = None):
         formatted_feed = []
         for item in news_items:
             try:
+                # Get the first thumbnail URL if available
+                thumbnail_url = ""
+                if item.get("thumbnail") and item["thumbnail"].get("resolutions"):
+                    thumbnail_url = item["thumbnail"]["resolutions"][0].get("url", "")
+                
                 formatted_feed.append({
                     "title": item.get("title", ""),
                     "url": item.get("link", ""),
                     "time_published": datetime.fromtimestamp(item.get("providerPublishTime", 0)).strftime("%Y-%m-%d %H:%M:%S"),
                     "summary": item.get("publisher", "") + ": " + item.get("title", ""),
                     "source": item.get("publisher", ""),
-                    "image_url": item.get("thumbnail", {}).get("resolutions", [{}])[0].get("url", "")
+                    "symbol": formatted_symbol,
+                    "image_url": thumbnail_url
                 })
             except Exception as e:
                 logger.error(f"Error formatting news item: {e}")
@@ -362,7 +358,7 @@ async def get_market_summary(symbol: str, target_date: datetime.date = None):
         logger.error(f"Error creating market summary: {e}")
         return {"feed": []}
 
-@app.get("/market-news")
+@router.get("/market-news")
 @retry_on_failure(max_retries=3, delay=1)
 async def get_market_news(
     from_date: str = None,
@@ -373,58 +369,61 @@ async def get_market_news(
     try:
         logger.info(f"Starting market news fetch with params: from={from_date}, to={to_date}, tickers={tickers}")
         
-        # Base URL for the FMP API
-        base_url = "https://financialmodelingprep.com/api/v3/stock_news"
-        
-        # Build query parameters
-        params = {
-            "apikey": fmp_key,
-            "limit": limit
-        }
-        
-        if from_date:
-            params["from"] = from_date
-        if to_date:
-            params["to"] = to_date
+        # Use yfinance to get news for major indices
+        indices = ["^GSPC", "^DJI", "^IXIC"]  # S&P 500, Dow Jones, NASDAQ
         if tickers:
-            params["tickers"] = tickers
-            
-        # Construct the URL with parameters
-        async with aiohttp.ClientSession() as session:
-            async with session.get(base_url, params=params) as response:
-                if response.status != 200:
-                    logger.error(f"FMP API error: {response.status}")
-                    raise HTTPException(
-                        status_code=response.status,
-                        detail="Failed to fetch market news"
-                    )
+            indices.extend(tickers.split(','))
+        
+        all_news = []
+        for symbol in indices:
+            try:
+                stock = yf.Ticker(symbol)
+                news_items = stock.news or []  # Ensure we have a list even if news is None
+                if news_items:
+                    # Add symbol to each news item
+                    for item in news_items:
+                        item["symbol"] = symbol
+                    all_news.extend(news_items)
+            except Exception as e:
+                logger.warning(f"Error fetching news for {symbol}: {e}")
+                continue
+        
+        # Sort by publish time and limit
+        all_news.sort(key=lambda x: x.get("providerPublishTime", 0), reverse=True)
+        all_news = all_news[:limit]
+        
+        # Format the response
+        formatted_news = []
+        for item in all_news:
+            try:
+                # Get the first thumbnail URL if available
+                thumbnail_url = ""
+                if item.get("thumbnail") and item["thumbnail"].get("resolutions"):
+                    thumbnail_url = item["thumbnail"]["resolutions"][0].get("url", "")
                 
-                news_data = await response.json()
-                
-                # Format the response
-                formatted_news = []
-                for item in news_data:
-                    try:
-                        formatted_news.append({
-                            "symbol": item.get("symbol", ""),
-                            "title": item.get("title", ""),
-                            "summary": item.get("text", ""),
-                            "url": item.get("url", ""),
-                            "time_published": item.get("publishedDate", ""),
-                            "source": item.get("site", ""),
-                            "image_url": item.get("image", "")
-                        })
-                    except Exception as e:
-                        logger.error(f"Error formatting news item: {e}")
-                        continue
-                
-                logger.info(f"Successfully fetched {len(formatted_news)} news items")
-                return {"feed": formatted_news}
+                formatted_news.append({
+                    "symbol": item.get("symbol", ""),
+                    "title": item.get("title", ""),
+                    "summary": item.get("publisher", "") + ": " + item.get("title", ""),
+                    "url": item.get("link", ""),
+                    "time_published": datetime.fromtimestamp(item.get("providerPublishTime", 0)).strftime("%Y-%m-%d %H:%M:%S"),
+                    "source": item.get("publisher", ""),
+                    "image_url": thumbnail_url
+                })
+            except Exception as e:
+                logger.error(f"Error formatting news item: {e}")
+                continue
+        
+        logger.info(f"Successfully fetched {len(formatted_news)} news items")
+        return {"feed": formatted_news}
                 
     except Exception as e:
         logger.error(f"Error in market news endpoint: {str(e)}")
         logger.exception("Full traceback:")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Export the router instead of app
+app = router
 
 if __name__ == "__main__":
     import uvicorn

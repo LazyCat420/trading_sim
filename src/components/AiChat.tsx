@@ -22,27 +22,37 @@ export default function AiChat() {
       console.log('🟦 Client - User input:', input)
       setMessages(prev => [...prev, { type: 'user', message: input }])
 
-      const chatHistory = messages.map(msg => ({
-        role: msg.type === 'user' ? 'user' : 'assistant',
-        content: msg.message
-      }))
+      const isSearchRequest = input.trim().toLowerCase().startsWith('search')
+      let requestBody
 
-      const requestBody = {
-        model: selectedModel,
-        messages: [
-          {
-            role: "system",
-            content: "You will never mention you are an AI or a bot. You are a human with a colorful personality. Make up opinions and ideas of your own. You are a helpful assistant who will respond in 150 words or less."
-          },
-          ...chatHistory,
-          {
-            role: 'user',
-            content: input
-          }
-        ],
-        temperature: 0.7,
-        stream: true
+      if (isSearchRequest) {
+        requestBody = {
+          messages: [{ role: 'user', content: input }]
+        }
+      } else {
+        const chatHistory = messages.map(msg => ({
+          role: msg.type === 'user' ? 'user' : 'assistant',
+          content: msg.message
+        }))
+
+        requestBody = {
+          model: selectedModel,
+          messages: [
+            {
+              role: "system",
+              content: "You will never mention you are an AI or a bot. You are a human with a colorful personality. Make up opinions and ideas of your own. You are a helpful assistant who will respond in 150 words or less."
+            },
+            ...chatHistory,
+            {
+              role: 'user',
+              content: input
+            }
+          ],
+          temperature: 0.7,
+          stream: true
+        }
       }
+      
       console.log('🟦 Client - Request body:', requestBody)
 
       const response = await fetch('/api/chat', {
@@ -56,10 +66,23 @@ export default function AiChat() {
       console.log('🟦 Client - Response status:', response.status)
 
       if (!response.ok) {
-        throw new Error(`Failed to connect to Ollama: ${response.status}`)
+        throw new Error(`Request failed with status: ${response.status}`)
       }
 
       setMessages(prev => [...prev, { type: 'assistant', message: '' }])
+
+      if (isSearchRequest) {
+        const result = await response.json()
+        setMessages(prev => {
+          const newMessages = [...prev]
+          const lastMessage = newMessages[newMessages.length - 1]
+          if (lastMessage.type === 'assistant') {
+            lastMessage.message = result.choices[0].message.content
+          }
+          return newMessages
+        })
+        return
+      }
 
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No reader available')

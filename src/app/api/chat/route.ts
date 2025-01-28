@@ -3,7 +3,35 @@ import { NextResponse } from 'next/server'
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    const message = body.messages[body.messages.length - 1].content.toLowerCase()
     
+    // Check if this is a search request
+    if (message.startsWith('search')) {
+      const response = await fetch('http://localhost:8000/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: message }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Search API error: ${response.status}`)
+      }
+
+      const searchResult = await response.json()
+      
+      // Return the search results in the chat format
+      return NextResponse.json({
+        choices: [{
+          message: {
+            content: searchResult.response || searchResult.error,
+          },
+        }],
+      })
+    }
+    
+    // If not a search request, proceed with Ollama chat
     const response = await fetch('http://10.0.0.29:11434/api/chat', {
       method: 'POST',
       headers: {

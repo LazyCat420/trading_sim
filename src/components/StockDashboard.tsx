@@ -62,8 +62,31 @@ export default function StockDashboard() {
 
   const fetchNews = async (symbols: string[]) => {
     if (symbols.length === 0) {
-      console.log('No symbols provided, clearing news');
-      setNews([]);
+      console.log('No symbols provided, fetching market news');
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        const response = await fetch('/stock/market-news');
+        console.log('Market News API response status:', response.status);
+        
+        const data = await response.json();
+        console.log('Market News API response data:', data);
+        
+        if (response.ok && data.feed) {
+          setNews(data.feed);
+        } else {
+          console.error('Market News API error:', data.error || 'Unknown error');
+          setError(data.error || 'Failed to fetch news');
+          setNews([]);
+        }
+      } catch (error) {
+        console.error('Error fetching market news:', error);
+        setError('Failed to fetch market news');
+        setNews([]);
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
     
@@ -75,28 +98,14 @@ export default function StockDashboard() {
       const symbol = symbols[0]; // For now, just get news for the first symbol
       console.log('Fetching news for symbol:', symbol);
       
-      const response = await fetch(`/api/news?symbol=${symbol}`);
+      const response = await fetch(`/stock/news/${symbol}`);
       console.log('News API response status:', response.status);
       
       const data = await response.json();
       console.log('News API response data:', data);
       
       if (response.ok && data.feed) {
-        const formattedNews = data.feed.map((item: {
-          title: string;
-          url: string;
-          time_published: string;
-          summary: string;
-          source: string;
-          image_url?: string;
-        }) => ({
-          ...item,
-          symbol,
-          image_url: item.image_url || null
-        }));
-        
-        console.log('Setting news feed with', formattedNews.length, 'items');
-        setNews(formattedNews);
+        setNews(data.feed);
       } else {
         console.error('News API error:', data.error || 'Unknown error');
         setError(data.error || 'Failed to fetch news');
