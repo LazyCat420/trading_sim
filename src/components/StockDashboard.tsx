@@ -269,16 +269,16 @@ export default function StockDashboard() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Symbol</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Price</TableHead>
-            <TableHead>Change</TableHead>
-            <TableHead>Volume</TableHead>
-            <TableHead>Market Cap</TableHead>
-            <TableHead>P/E Ratio</TableHead>
-            <TableHead>52W High/Low</TableHead>
-            <TableHead>Analyst Rating</TableHead>
-            <TableHead>Actions</TableHead>
+            <TableHead key="symbol">Symbol</TableHead>
+            <TableHead key="name">Name</TableHead>
+            <TableHead key="price">Price</TableHead>
+            <TableHead key="change">Change</TableHead>
+            <TableHead key="volume">Volume</TableHead>
+            <TableHead key="marketCap">Market Cap</TableHead>
+            <TableHead key="peRatio">P/E Ratio</TableHead>
+            <TableHead key="52w">52W High/Low</TableHead>
+            <TableHead key="rating">Analyst Rating</TableHead>
+            <TableHead key="actions">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

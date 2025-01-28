@@ -94,7 +94,7 @@ export default function StockChart({ symbol, data }: StockChartProps) {
     try {
       console.log(`Fetching stock data for ${symbol} with period ${period}`)
       
-      const response = await fetch(`/stock/history/${symbol}?period=${period}`)
+      const response = await fetch(`/stock/history/${symbol}?period=${period}&interval=${period === "1d" ? "5m" : "1d"}`)
       console.log('Response status:', response.status)
       
       if (!response.ok) {
@@ -103,25 +103,16 @@ export default function StockChart({ symbol, data }: StockChartProps) {
         throw new Error(`Failed to fetch data: ${response.statusText}`)
       }
       
-      const rawText = await response.text()
-      console.log('Raw response:', rawText)
-      
-      let historyData
-      try {
-        historyData = JSON.parse(rawText)
-        console.log('Parsed history data:', historyData)
-      } catch (parseError) {
-        console.error('JSON Parse Error:', parseError)
-        throw new Error('Invalid JSON response from server')
-      }
+      const historyData = await response.json()
+      console.log('History data:', historyData)
 
-      if (!Array.isArray(historyData)) {
+      if (!historyData.data || !Array.isArray(historyData.data)) {
         console.error('Invalid data format:', historyData)
         throw new Error('Invalid data format received')
       }
 
       // Update the chart data
-      setStockData(historyData)
+      setStockData(historyData.data)
       
       // Fetch dividend history
       const dividendResponse = await fetch(`/stock/dividends/${symbol}`)
@@ -141,11 +132,12 @@ export default function StockChart({ symbol, data }: StockChartProps) {
         setSimilarStocks(similarData)
       }
       
-      return historyData
+      return historyData.data
     } catch (error) {
       console.error('Error in fetchStockData:', error)
       setError(error instanceof Error ? error.message : 'Failed to fetch data')
-      throw error
+      setStockData([]) // Clear the data on error
+      return []
     } finally {
       setIsLoading(false)
     }
@@ -210,7 +202,17 @@ export default function StockChart({ symbol, data }: StockChartProps) {
   const fiftyTwoWeekLow = Math.min(...chartData.map((d: StockHistoryData) => d.low))
 
   const chartConfig = {
-    labels: stockData.map(d => d.date),
+    labels: stockData.map(d => {
+      const date = new Date(d.date);
+      // Format based on timeframe
+      if (timeframe === "1d") {
+        return date.toLocaleTimeString();
+      } else if (timeframe === "5d") {
+        return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+      } else {
+        return date.toLocaleDateString();
+      }
+    }),
     datasets: [
       {
         label: 'Price',
@@ -218,7 +220,8 @@ export default function StockChart({ symbol, data }: StockChartProps) {
         fill: true,
         borderColor: '#8884d8',
         backgroundColor: 'rgba(136, 132, 216, 0.3)',
-        tension: 0.4
+        tension: 0.4,
+        pointRadius: timeframe === "1d" ? 2 : 1,
       }
     ]
   }
@@ -234,6 +237,16 @@ export default function StockChart({ symbol, data }: StockChartProps) {
         callbacks: {
           label: function(context) {
             return `$${context.parsed.y.toFixed(2)}`
+          },
+          title: function(tooltipItems) {
+            const date = new Date(stockData[tooltipItems[0].dataIndex].date);
+            if (timeframe === "1d") {
+              return date.toLocaleTimeString();
+            } else if (timeframe === "5d") {
+              return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+            } else {
+              return date.toLocaleDateString();
+            }
           }
         }
       }
@@ -242,10 +255,16 @@ export default function StockChart({ symbol, data }: StockChartProps) {
       x: {
         ticks: {
           maxRotation: 45,
-          minRotation: 45
+          minRotation: 45,
+          autoSkip: true,
+          maxTicksLimit: timeframe === "1d" ? 6 : 10
+        },
+        grid: {
+          display: false
         }
       },
       y: {
+        position: 'right',
         ticks: {
           callback: function(value) {
             if (typeof value === 'number') {
@@ -253,10 +272,17 @@ export default function StockChart({ symbol, data }: StockChartProps) {
             }
             return value
           }
+        },
+        grid: {
+          color: 'rgba(0, 0, 0, 0.1)'
         }
       }
     },
-    onClick: handleChartClick
+    onClick: handleChartClick,
+    interaction: {
+      intersect: false,
+      mode: 'index'
+    }
   }
 
   const dividendChartData = {

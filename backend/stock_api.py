@@ -9,6 +9,7 @@ import aiohttp
 import os
 from dotenv import load_dotenv
 import yfinance as yf
+import pandas as pd
 
 # Load environment variables
 load_dotenv()
@@ -99,29 +100,19 @@ async def get_stock_info(symbol: str):
         logger.info(f"Fetching data for symbol: {formatted_symbol}")
         
         stock = yf.Ticker(formatted_symbol)
-        
-        # Validate symbol with history
-        hist = stock.history(period="1d")
-        if hist.empty:
-            logger.error(f"No history data found for {formatted_symbol}")
-            raise HTTPException(status_code=404, detail=f"No data found for symbol {symbol}")
-
         info = stock.info
+        
         if not info:
             logger.error(f"No info data found for {formatted_symbol}")
             raise HTTPException(status_code=404, detail=f"No data found for symbol {symbol}")
 
-        # Get current price
-        current_price = float(hist['Close'].iloc[-1]) if not hist.empty else float(info.get("currentPrice", 0))
+        # Get current price and market data
+        current_price = info.get("currentPrice", info.get("regularMarketPrice", 0))
+        previous_close = info.get("previousClose", info.get("regularMarketPreviousClose", 0))
         
-        # Get price changes
-        if not hist.empty and len(hist) > 1:
-            prev_close = float(hist['Close'].iloc[-2])
-            change = current_price - prev_close
-            change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
-        else:
-            change = float(info.get("regularMarketChange", 0))
-            change_percent = float(info.get("regularMarketChangePercent", 0))
+        # Calculate change and change percent
+        change = current_price - previous_close if previous_close else 0
+        change_percent = (change / previous_close * 100) if previous_close else 0
 
         # Get analyst rating
         try:
@@ -138,14 +129,14 @@ async def get_stock_info(symbol: str):
             logger.warning(f"Failed to fetch recommendations: {str(e)}")
             latest_rating = None
         
-        return StockInfo(
+        stock_info = StockInfo(
             symbol=symbol,
-            currentPrice=current_price,
-            change=change,
-            changePercent=change_percent,
-            volume=info.get("regularMarketVolume", 0),
+            currentPrice=float(current_price),
+            change=float(change),
+            changePercent=float(change_percent),
+            volume=info.get("volume", info.get("regularMarketVolume", 0)),
             marketCap=info.get("marketCap", 0),
-            peRatio=info.get("forwardPE"),
+            peRatio=info.get("forwardPE", info.get("trailingPE")),
             dividendYield=info.get("dividendYield"),
             fiftyTwoWeekHigh=info.get("fiftyTwoWeekHigh"),
             fiftyTwoWeekLow=info.get("fiftyTwoWeekLow"),
@@ -157,6 +148,9 @@ async def get_stock_info(symbol: str):
             currency=info.get("currency"),
             analystRating=latest_rating
         )
+        
+        return stock_info
+        
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -180,13 +174,41 @@ async def get_stock_history(
         stock = yf.Ticker(formatted_symbol)
         logger.info(f"Created Ticker object")
         
-        # Get history data
-        logger.info(f"Fetching history with period={period}, interval={interval}")
-        history = stock.history(period=period, interval=interval)
+        # Try different periods if the first one fails
+        periods_to_try = [period, "5d", "1mo", "3mo"]
+        history = None
         
-        if history.empty:
-            logger.error("No history data found")
-            raise HTTPException(status_code=404, detail=f"No historical data found for {symbol}")
+        for try_period in periods_to_try:
+            try:
+                # Get history data
+                logger.info(f"Fetching history with period={try_period}, interval={interval}")
+                history = stock.history(period=try_period, interval=interval)
+                if not history.empty:
+                    logger.info(f"Successfully got data with period={try_period}")
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to get data with period={try_period}: {str(e)}")
+                continue
+        
+        if history is None or history.empty:
+            # Try getting quote data as fallback
+            logger.info("Attempting to get current quote data as fallback")
+            info = stock.info
+            if info and (info.get("regularMarketPrice") or info.get("currentPrice")):
+                current_price = info.get("regularMarketPrice") or info.get("currentPrice")
+                current_time = datetime.now()
+                
+                # Create a single data point with current price
+                history = pd.DataFrame({
+                    "Open": [current_price],
+                    "High": [current_price],
+                    "Low": [current_price],
+                    "Close": [current_price],
+                    "Volume": [info.get("volume", 0) or info.get("regularMarketVolume", 0)],
+                }, index=[current_time])
+            else:
+                logger.error("No history data or current price found")
+                raise HTTPException(status_code=404, detail=f"No historical data found for {symbol}")
             
         logger.info(f"Got {len(history)} data points")
         logger.info(f"Date range: {history.index.min()} to {history.index.max()}")
@@ -197,7 +219,7 @@ async def get_stock_history(
             try:
                 data_point = StockHistory(
                     date=index.strftime("%Y-%m-%d %H:%M:%S"),
-                    price=float(row["Close"]),  # Keep price for backward compatibility
+                    price=float(row["Close"]),
                     volume=int(row["Volume"]),
                     high=float(row["High"]),
                     low=float(row["Low"]),
@@ -215,7 +237,6 @@ async def get_stock_history(
             logger.info(f"First data point: {formatted_data[0]}")
             logger.info(f"Last data point: {formatted_data[-1]}")
             
-        # Return a list of dictionaries
         return {"data": formatted_data}
         
     except HTTPException as he:
