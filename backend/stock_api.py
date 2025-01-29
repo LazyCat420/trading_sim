@@ -603,30 +603,88 @@ async def get_stock_data(symbol: str):
 # Watchlist endpoints
 @router.post("/watchlist/{user_id}/add", response_model=dict)
 async def add_to_watchlist(user_id: int, item: WatchlistItem):
+    logger.info(f"Adding stock {item.symbol} to watchlist for user {user_id}")
     success = db.add_to_watchlist(user_id, item.symbol)
     if not success:
-        raise HTTPException(status_code=400, message="Stock already in watchlist")
+        logger.error(f"Stock {item.symbol} already in watchlist for user {user_id}")
+        raise HTTPException(status_code=400, detail="Stock already in watchlist")
+    logger.info(f"Successfully added {item.symbol} to watchlist")
     return {"message": "Stock added to watchlist"}
 
 @router.delete("/watchlist/{user_id}/remove/{symbol}")
 async def remove_from_watchlist(user_id: int, symbol: str):
+    logger.info(f"Removing stock {symbol} from watchlist for user {user_id}")
     success = db.remove_from_watchlist(user_id, symbol)
     if not success:
-        raise HTTPException(status_code=404, message="Stock not found in watchlist")
+        logger.error(f"Stock {symbol} not found in watchlist for user {user_id}")
+        raise HTTPException(status_code=404, detail="Stock not found in watchlist")
+    logger.info(f"Successfully removed {symbol} from watchlist")
     return {"message": "Stock removed from watchlist"}
 
 @router.get("/watchlist/{user_id}", response_model=List[WatchlistResponse])
 async def get_watchlist(user_id: int):
-    watchlist = db.get_user_watchlist(user_id)
-    return [
-        WatchlistResponse(
-            symbol=item['symbol'],
-            name=item['name'],
-            last_price=item['last_price'],
-            last_updated=item['last_updated']
-        )
-        for item in watchlist
-    ]
+    logger.info(f"Getting watchlist for user {user_id}")
+    try:
+        watchlist = db.get_user_watchlist(user_id)
+        logger.info(f"Retrieved {len(watchlist)} items from watchlist")
+        
+        # Update stock data for each item
+        updated_watchlist = []
+        for item in watchlist:
+            try:
+                logger.info(f"Updating data for stock {item['symbol']}")
+                # Get fresh stock data
+                stock = yf.Ticker(item['symbol'])
+                info = stock.info
+                
+                if info:
+                    logger.info(f"Got fresh data for {item['symbol']}")
+                    # Update stock in database
+                    with db.get_db() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute('''
+                            UPDATE stocks 
+                            SET name = ?, last_price = ?, last_updated = ?, is_active = 1
+                            WHERE symbol = ?
+                        ''', (
+                            info.get('shortName') or info.get('longName'),
+                            info.get('currentPrice') or info.get('regularMarketPrice'),
+                            datetime.now(),
+                            item['symbol']
+                        ))
+                        conn.commit()
+                    
+                    # Add to response
+                    updated_watchlist.append(WatchlistResponse(
+                        symbol=item['symbol'],
+                        name=info.get('shortName') or info.get('longName'),
+                        last_price=info.get('currentPrice') or info.get('regularMarketPrice'),
+                        last_updated=datetime.now().isoformat()
+                    ))
+                else:
+                    logger.warning(f"No fresh data for {item['symbol']}, using stored data")
+                    # If no fresh data, use stored data
+                    updated_watchlist.append(WatchlistResponse(
+                        symbol=item['symbol'],
+                        name=item['name'],
+                        last_price=item['last_price'],
+                        last_updated=item['last_updated']
+                    ))
+            except Exception as e:
+                logger.error(f"Error updating stock {item['symbol']}: {str(e)}")
+                # Still include the stock with stored data
+                updated_watchlist.append(WatchlistResponse(
+                    symbol=item['symbol'],
+                    name=item['name'],
+                    last_price=item['last_price'],
+                    last_updated=item['last_updated']
+                ))
+        
+        logger.info(f"Returning {len(updated_watchlist)} updated watchlist items")
+        return updated_watchlist
+    except Exception as e:
+        logger.error(f"Error getting watchlist: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Export the router instead of app
 app = router

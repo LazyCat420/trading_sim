@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
-  console.log('GET /api/stock/history - Received request');
+  console.log('GET /api/stock/earnings - Received request');
   
-  // Get the symbol from the search params
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get('symbol');
   
@@ -14,10 +13,10 @@ export async function GET(request: NextRequest) {
     );
   }
   
-  console.log('Fetching stock history for symbol:', symbol);
+  console.log('Fetching earnings data for symbol:', symbol);
   
   try {
-    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/history/${symbol}`;
+    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/earnings/${symbol}`;
     console.log('Fetching from backend URL:', url);
     
     const response = await fetch(url, {
@@ -32,7 +31,7 @@ export async function GET(request: NextRequest) {
       const error = await response.text();
       console.error('Backend error:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch stock history' },
+        { error: 'Failed to fetch earnings data' },
         { status: response.status }
       );
     }
@@ -41,7 +40,7 @@ export async function GET(request: NextRequest) {
     console.log('Backend response data:', data);
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error in GET /api/stock/history:', error);
+    console.error('Error in GET /api/stock/earnings:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

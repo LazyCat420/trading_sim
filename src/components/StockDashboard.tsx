@@ -8,27 +8,29 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CollapsibleCard } from "@/components/ui/collapsible-card"
 import StockChart from './StockChart'
+import { LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Line } from 'recharts'
+import { ResponsiveContainer } from 'recharts'
+import { cn } from "@/lib/utils"
+import { X } from "lucide-react"
 
 interface StockData {
-  symbol: string
-  currentPrice: number
-  change: number
-  changePercent: number
-  volume: number
-  marketCap: number | string
-  peRatio?: number
-  dividendYield?: number
-  fiftyTwoWeekHigh?: number
-  fiftyTwoWeekLow?: number
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume?: number;
+  marketCap?: number;
+  shortName?: string;
+  longName?: string;
+  peRatio?: number;
+  dividendYield?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
   analystRating?: {
-    firm: string
-    grade: string
-    action: string
-  }
-  shortName?: string
-  longName?: string
-  sector?: string
-  industry?: string
+    firm: string;
+    grade: string;
+    action: string;
+  };
 }
 
 interface NewsItem {
@@ -42,27 +44,69 @@ interface NewsItem {
 }
 
 interface StockHistoryData {
-  date: string
-  price: number
-  volume: number
-  high: number
-  low: number
-  open: number
-  close: number
+  date: string;
+  price: number;
 }
 
 interface StockHistoryResponse {
   data: StockHistoryData[];
 }
 
+interface DividendData {
+  date: string;
+  amount: number;
+}
+
+interface EarningsData {
+  date: string;
+  actualEPS: number;
+  estimatedEPS: number;
+  surprise: number;
+}
+
+interface StockDetailData extends StockData {
+  dividendData?: DividendData[];
+  earningsData?: EarningsData[];
+}
+
+const formatNumber = (num: number): string => {
+  if (num >= 1e9) {
+    return `${(num / 1e9).toFixed(2)}B`;
+  }
+  if (num >= 1e6) {
+    return `${(num / 1e6).toFixed(2)}M`;
+  }
+  if (num >= 1e3) {
+    return `${(num / 1e3).toFixed(2)}K`;
+  }
+  return num.toLocaleString();
+};
+
+const formatMarketCap = (marketCap: number): string => {
+  if (marketCap >= 1e12) {
+    return `$${(marketCap / 1e12).toFixed(2)}T`;
+  }
+  if (marketCap >= 1e9) {
+    return `$${(marketCap / 1e9).toFixed(2)}B`;
+  }
+  if (marketCap >= 1e6) {
+    return `$${(marketCap / 1e6).toFixed(2)}M`;
+  }
+  return `$${marketCap.toLocaleString()}`;
+};
+
 export default function StockDashboard() {
   const [searchSymbol, setSearchSymbol] = useState('')
-  const [stocks, setStocks] = useState<StockData[]>([])
+  const [watchlist, setWatchlist] = useState<string[]>([])
+  const [stockPrices, setStockPrices] = useState<StockData[]>([])
   const [news, setNews] = useState<NewsItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
-  const [stockHistory, setStockHistory] = useState<StockHistoryResponse>({ data: [] })
+  const [stockHistory, setStockHistory] = useState<StockHistoryData[]>([])
+  const [stockData, setStockData] = useState<StockData | null>(null)
+  const [dividendData, setDividendData] = useState<DividendData[]>([])
+  const [earningsData, setEarningsData] = useState<EarningsData[]>([])
 
   // Load watchlist on component mount
   useEffect(() => {
@@ -91,7 +135,8 @@ export default function StockDashboard() {
           );
           const filteredStocks = stocksData.filter((stock: StockData | null) => stock !== null);
           console.log('Setting stocks:', filteredStocks);
-          setStocks(filteredStocks);
+          setStockPrices(filteredStocks);
+          setWatchlist(filteredStocks.map(stock => stock.symbol));
         } else {
           console.error('Failed to load watchlist:', data.error);
           setError(data.error || 'Failed to load watchlist');
@@ -109,26 +154,26 @@ export default function StockDashboard() {
 
   const fetchNews = async (symbols: string[]) => {
     if (symbols.length === 0) {
-      console.log('No symbols provided, fetching market news');
+      console.log('fetchNews - No symbols provided, fetching market news');
       try {
         setIsLoading(true);
         setError(null);
         
-        const response = await fetch('/stock/market-news');
-        console.log('Market News API response status:', response.status);
+        const response = await fetch('/api/market-news');
+        console.log('fetchNews - Market News API response status:', response.status);
         
         const data = await response.json();
-        console.log('Market News API response data:', data);
+        console.log('fetchNews - Market News API response data:', data);
         
         if (response.ok && data.feed) {
           setNews(data.feed);
         } else {
-          console.error('Market News API error:', data.error || 'Unknown error');
+          console.error('fetchNews - Market News API error:', data.error || 'Unknown error');
           setError(data.error || 'Failed to fetch news');
           setNews([]);
         }
       } catch (error) {
-        console.error('Error fetching market news:', error);
+        console.error('fetchNews - Error fetching market news:', error);
         setError('Failed to fetch market news');
         setNews([]);
       } finally {
@@ -138,89 +183,190 @@ export default function StockDashboard() {
     }
     
     try {
-      console.log('Fetching news for symbols:', symbols);
+      console.log('fetchNews - Fetching news for symbols:', symbols);
       setIsLoading(true);
       setError(null);
       
       const symbol = symbols[0]; // For now, just get news for the first symbol
-      console.log('Fetching news for symbol:', symbol);
+      console.log('fetchNews - Fetching news for symbol:', symbol);
       
-      const response = await fetch(`/stock/news/${symbol}`);
-      console.log('News API response status:', response.status);
+      const response = await fetch(`/api/news?symbol=${symbol}`);
+      console.log('fetchNews - News API response status:', response.status);
       
       const data = await response.json();
-      console.log('News API response data:', data);
+      console.log('fetchNews - News API response data:', data);
       
       if (response.ok && data.feed) {
         setNews(data.feed);
       } else {
-        console.error('News API error:', data.error || 'Unknown error');
+        console.error('fetchNews - News API error:', data.error || 'Unknown error');
         setError(data.error || 'Failed to fetch news');
         setNews([]);
       }
     } catch (error) {
-      console.error('Error fetching news:', error);
+      console.error('fetchNews - Error fetching news:', error);
       setError('Failed to fetch news');
       setNews([]);
     } finally {
       setIsLoading(false);
     }
-  }
+  };
 
-  const fetchStockPrice = async (symbol: string): Promise<StockData | null> => {
+  const fetchStockPrice = async (symbol: string): Promise<StockData> => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/${symbol}`)
-      const data = await response.json()
+      console.log('fetchStockPrice - Starting fetch for symbol:', symbol);
+      const response = await fetch(`/api/stock?symbol=${symbol}`);
+      console.log('fetchStockPrice - Response status:', response.status);
       
-      if (data.error) {
-        setError(data.error)
-        return null
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('fetchStockPrice - Error response:', error);
+        throw new Error('Failed to fetch stock price');
+      }
+
+      const data = await response.json();
+      console.log('fetchStockPrice - Raw response data:', data);
+      
+      if (!data || typeof data.price !== 'number') {
+        console.error('fetchStockPrice - Invalid data structure:', data);
+        throw new Error('Invalid stock price data received');
       }
       
-      return data
+      const stockData = {
+        symbol: symbol.toUpperCase(),
+        price: data.price,
+        change: data.change || 0,
+        changePercent: data.changePercent || 0,
+        volume: data.volume,
+        marketCap: data.marketCap,
+        shortName: data.shortName,
+        longName: data.longName
+      };
+      
+      console.log('fetchStockPrice - Processed stock data:', stockData);
+      return stockData;
     } catch (error) {
-      setError('Failed to fetch stock price')
-      return null
+      console.error('fetchStockPrice - Error:', error);
+      throw error;
     }
-  }
+  };
 
   const fetchStockHistory = async (symbol: string) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/history/${symbol}`)
-      const data = await response.json()
+      console.log('Fetching history for symbol:', symbol);
+      const response = await fetch(`/api/stock/history?symbol=${symbol}`);
+      console.log('History response status:', response.status);
       
-      if (data.error) {
-        setError(data.error)
-        return
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('Error fetching history:', error);
+        throw new Error('Failed to fetch stock history');
       }
-      
-      setStockHistory(data)
+
+      const data = await response.json();
+      console.log('History data:', data);
+      return data;
     } catch (error) {
-      setError('Failed to fetch stock history')
+      console.error('Error in fetchStockHistory:', error);
+      throw error;
     }
-  }
+  };
+
+  const fetchStockDetails = async (symbol: string) => {
+    try {
+      console.log('fetchStockDetails - Starting fetch for symbol:', symbol);
+      
+      console.log('fetchStockDetails - Fetching history data...');
+      const historyResponse = await fetch(`/api/stock/history?symbol=${symbol}`);
+      console.log('fetchStockDetails - History response status:', historyResponse.status);
+      const historyData = await historyResponse.json();
+      console.log('fetchStockDetails - History data:', historyData);
+
+      console.log('fetchStockDetails - Fetching dividend data...');
+      const dividendResponse = await fetch(`/api/stock/dividends?symbol=${symbol}`);
+      console.log('fetchStockDetails - Dividend response status:', dividendResponse.status);
+      const dividendData = await dividendResponse.json();
+      console.log('fetchStockDetails - Dividend data:', dividendData);
+
+      console.log('fetchStockDetails - Fetching earnings data...');
+      const earningsResponse = await fetch(`/api/stock/earnings?symbol=${symbol}`);
+      console.log('fetchStockDetails - Earnings response status:', earningsResponse.status);
+      const earningsData = await earningsResponse.json();
+      console.log('fetchStockDetails - Earnings data:', earningsData);
+
+      // Check if we got valid data arrays
+      const validHistoryData = Array.isArray(historyData) ? historyData : [];
+      const validDividendData = dividendData?.dividends || [];
+      const validEarningsData = earningsData?.earnings || [];
+
+      console.log('fetchStockDetails - Setting state with:', {
+        historyLength: validHistoryData.length,
+        dividendLength: validDividendData.length,
+        earningsLength: validEarningsData.length
+      });
+
+      setStockHistory(validHistoryData);
+      setDividendData(validDividendData);
+      setEarningsData(validEarningsData);
+    } catch (error) {
+      console.error('fetchStockDetails - Error:', error);
+      setError('Failed to fetch stock details');
+      setStockHistory([]);
+      setDividendData([]);
+      setEarningsData([]);
+    }
+  };
 
   const handleStockSelect = async (symbol: string) => {
-    setSelectedStock(symbol)
-    await fetchStockHistory(symbol)
-    await fetchNews([symbol]) // Fetch news for selected stock only
-  }
-
-  const handleAddStock = async () => {
-    if (!searchSymbol) return
-    
-    // Check if stock is already in the list
-    if (stocks.some(stock => stock.symbol === searchSymbol.toUpperCase())) {
-      setError('Stock is already in your list')
-      return
-    }
-    
-    setIsLoading(true)
-    setError(null)
+    console.log('handleStockSelect - Starting for symbol:', symbol);
+    setError(null);
+    setSelectedStock(symbol);
     
     try {
-      const stockData = await fetchStockPrice(searchSymbol.toUpperCase())
+      console.log('handleStockSelect - Fetching price data...');
+      const priceData = await fetchStockPrice(symbol);
+      console.log('handleStockSelect - Price data received:', priceData);
+      setStockData(priceData);
+
+      console.log('handleStockSelect - Fetching stock details...');
+      await fetchStockDetails(symbol);
+      
+      console.log('handleStockSelect - Fetching news...');
+      await fetchNews([symbol]);
+      
+      console.log('handleStockSelect - All data fetched successfully');
+    } catch (error) {
+      console.error('handleStockSelect - Error:', error);
+      setError(error instanceof Error ? error.message : 'An error occurred');
+      setStockData(null);
+      setStockHistory([]);
+      setDividendData([]);
+      setEarningsData([]);
+    }
+  };
+
+  const handleAddStock = async () => {
+    if (!searchSymbol) return;
+    
+    console.log('handleAddStock - Starting add for symbol:', searchSymbol);
+    
+    // Check if stock is already in the list
+    if (watchlist.some(stock => stock === searchSymbol.toUpperCase())) {
+      console.log('handleAddStock - Stock already in watchlist:', searchSymbol);
+      setError('Stock is already in your list');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log('handleAddStock - Fetching stock data...');
+      const stockData = await fetchStockPrice(searchSymbol.toUpperCase());
+      console.log('handleAddStock - Received stock data:', stockData);
+      
       if (stockData) {
+        console.log('handleAddStock - Adding to watchlist...');
         // Add to watchlist using new endpoint
         const response = await fetch('/api/stock/watchlist/1/add', {
           method: 'POST',
@@ -230,42 +376,48 @@ export default function StockDashboard() {
           body: JSON.stringify({
             symbol: searchSymbol.toUpperCase()
           }),
-        })
+        });
+        
+        console.log('handleAddStock - Watchlist add response:', response.status);
 
         if (!response.ok) {
-          throw new Error('Failed to add stock to watchlist')
+          const errorText = await response.text();
+          console.error('handleAddStock - Failed to add to watchlist:', errorText);
+          throw new Error('Failed to add stock to watchlist');
         }
 
-        setStocks(prev => [...prev, stockData])
-        await handleStockSelect(searchSymbol.toUpperCase())
-        setSearchSymbol('')
+        const responseData = await response.json();
+        console.log('handleAddStock - Watchlist add response data:', responseData);
+
+        setStockPrices(prev => [...prev, stockData]);
+        setWatchlist(prev => [...prev, searchSymbol.toUpperCase()]);
+        await handleStockSelect(searchSymbol.toUpperCase());
+        setSearchSymbol('');
+        console.log('handleAddStock - Successfully added stock');
       }
     } catch (error) {
-      setError('Failed to add stock')
+      console.error('handleAddStock - Error:', error);
+      setError('Failed to add stock');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleRefreshAll = async () => {
-    if (stocks.length === 0) return
+    if (watchlist.length === 0) return;
     
-    setIsLoading(true)
-    setError(null)
+    setError(null);
+    setIsLoading(true);
     
     try {
-      const updatedStocks = await Promise.all(
-        stocks.map(stock => fetchStockPrice(stock.symbol))
-      )
-      
-      setStocks(updatedStocks.filter((stock): stock is StockData => stock !== null))
-      await fetchNews(stocks.map(s => s.symbol))
+      await updateStockPrices();
     } catch (error) {
-      setError('Failed to refresh stocks')
+      console.error('Error refreshing stocks:', error);
+      setError('Failed to refresh stocks');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleRemoveStock = async (symbol: string) => {
     try {
@@ -281,10 +433,11 @@ export default function StockDashboard() {
         throw new Error('Failed to remove stock from watchlist')
       }
 
-      setStocks(prev => prev.filter(stock => stock.symbol !== symbol))
+      setStockPrices(prev => prev.filter(stock => stock.symbol !== symbol))
+      setWatchlist(prev => prev.filter(s => s !== symbol))
       if (selectedStock === symbol) {
         setSelectedStock(null)
-        setStockHistory({ data: [] })
+        setStockHistory([]);
       }
     } catch (error) {
       setError('Failed to remove stock')
@@ -298,6 +451,68 @@ export default function StockDashboard() {
       handleAddStock()
     }
   }
+
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      if (watchlist.length > 0) {
+        await updateStockPrices();
+      }
+    };
+
+    fetchInitialData();
+
+    // Set up periodic updates
+    const intervalId = setInterval(updateStockPrices, 60000); // Update every minute
+    return () => clearInterval(intervalId);
+  }, [watchlist]);
+
+  useEffect(() => {
+    if (selectedStock) {
+      handleStockSelect(selectedStock);
+    }
+  }, [selectedStock]);
+
+  const updateStockPrices = async () => {
+    setError(null);
+    console.log('updateStockPrices - Starting update for watchlist:', watchlist);
+    
+    try {
+      const updatedStocks = await Promise.all(
+        watchlist.map(async (symbol) => {
+          try {
+            console.log(`updateStockPrices - Fetching data for ${symbol}`);
+            const data = await fetchStockPrice(symbol);
+            console.log(`updateStockPrices - Received data for ${symbol}:`, data);
+            return data;
+          } catch (error) {
+            console.error(`updateStockPrices - Error updating ${symbol}:`, error);
+            return null;
+          }
+        })
+      );
+      
+      console.log('updateStockPrices - All updated stocks:', updatedStocks);
+      
+      // Filter out failed updates and update the state
+      const validStocks = updatedStocks.filter((stock): stock is StockData => {
+        if (!stock) {
+          console.log('updateStockPrices - Filtering out null stock');
+          return false;
+        }
+        if (typeof stock.price !== 'number') {
+          console.log('updateStockPrices - Filtering out stock with invalid price:', stock);
+          return false;
+        }
+        return true;
+      });
+      
+      console.log('updateStockPrices - Valid stocks after filtering:', validStocks);
+      setStockPrices(validStocks);
+    } catch (error) {
+      console.error('Error in updateStockPrices:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update stock prices');
+    }
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -318,7 +533,7 @@ export default function StockDashboard() {
         <Button
           variant="outline"
           onClick={handleRefreshAll}
-          disabled={isLoading || stocks.length === 0}
+          disabled={isLoading || watchlist.length === 0}
         >
           Refresh All
         </Button>
@@ -329,67 +544,184 @@ export default function StockDashboard() {
       )}
 
       {selectedStock && (
-        <StockChart symbol={selectedStock} data={stockHistory} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          {stockHistory.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h2 className="text-xl font-bold mb-4">Price History - {selectedStock}</h2>
+              <div className="w-full h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={stockHistory}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="date"
+                      tickFormatter={(date) => new Date(date).toLocaleDateString()}
+                    />
+                    <YAxis 
+                      domain={['auto', 'auto']}
+                      tickFormatter={(value) => `$${value.toFixed(2)}`}
+                    />
+                    <Tooltip
+                      labelFormatter={(date) => new Date(date).toLocaleDateString()}
+                      formatter={(value: number) => [`$${value.toFixed(2)}`, 'Price']}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="price"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 8 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {dividendData.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h2 className="text-xl font-bold mb-4">Dividend History - {selectedStock}</h2>
+              <div className="w-full h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={dividendData}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="date"
+                      tickFormatter={(date) => new Date(date).toLocaleDateString()}
+                    />
+                    <YAxis 
+                      domain={['auto', 'auto']}
+                      tickFormatter={(value) => `$${value.toFixed(2)}`}
+                    />
+                    <Tooltip
+                      labelFormatter={(date) => new Date(date).toLocaleDateString()}
+                      formatter={(value: number) => [`$${value.toFixed(2)}`, 'Dividend']}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="amount"
+                      stroke="#16a34a"
+                      strokeWidth={2}
+                      dot={true}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {earningsData.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h2 className="text-xl font-bold mb-4">Earnings History - {selectedStock}</h2>
+              <div className="w-full h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={earningsData}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="date"
+                      tickFormatter={(date) => new Date(date).toLocaleDateString()}
+                    />
+                    <YAxis 
+                      domain={['auto', 'auto']}
+                      tickFormatter={(value) => `$${value.toFixed(2)}`}
+                    />
+                    <Tooltip
+                      labelFormatter={(date) => new Date(date).toLocaleDateString()}
+                      formatter={(value: number) => [`$${value.toFixed(2)}`, 'EPS']}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      name="Actual EPS"
+                      dataKey="actualEPS"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={true}
+                    />
+                    <Line
+                      type="monotone"
+                      name="Estimated EPS"
+                      dataKey="estimatedEPS"
+                      stroke="#dc2626"
+                      strokeWidth={2}
+                      dot={true}
+                      strokeDasharray="5 5"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead key="symbol">Symbol</TableHead>
-            <TableHead key="name">Name</TableHead>
-            <TableHead key="price">Price</TableHead>
-            <TableHead key="change">Change</TableHead>
-            <TableHead key="volume">Volume</TableHead>
-            <TableHead key="marketCap">Market Cap</TableHead>
-            <TableHead key="peRatio">P/E Ratio</TableHead>
-            <TableHead key="52w">52W High/Low</TableHead>
-            <TableHead key="rating">Analyst Rating</TableHead>
-            <TableHead key="actions">Actions</TableHead>
+            <TableHead>Symbol</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead className="text-right">Price</TableHead>
+            <TableHead className="text-right">Change</TableHead>
+            <TableHead className="text-right">Volume</TableHead>
+            <TableHead className="text-right">Market Cap</TableHead>
+            <TableHead></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {stocks.map((stock) => (
-            <TableRow 
-              key={stock.symbol}
-              className={`cursor-pointer hover:bg-gray-50 ${selectedStock === stock.symbol ? 'bg-blue-50' : ''}`}
-              onClick={() => handleStockSelect(stock.symbol)}
-            >
-              <TableCell>{stock.symbol}</TableCell>
-              <TableCell>{stock.shortName || stock.longName || 'N/A'}</TableCell>
-              <TableCell>${(stock.currentPrice || 0).toFixed(2)}</TableCell>
-              <TableCell className={stock.change >= 0 ? 'text-green-500' : 'text-red-500'}>
-                {(stock.change || 0).toFixed(2)} ({(stock.changePercent || 0).toFixed(2)}%)
-              </TableCell>
-              <TableCell>{(stock.volume || 0).toLocaleString()}</TableCell>
-              <TableCell>
-                {typeof stock.marketCap === 'number' ? 
-                  `$${(stock.marketCap / 1e9).toFixed(2)}B` : 
-                  'N/A'}
-              </TableCell>
-              <TableCell>{stock.peRatio?.toFixed(2) || 'N/A'}</TableCell>
-              <TableCell>
-                ${stock.fiftyTwoWeekHigh?.toFixed(2) || 'N/A'} / 
-                ${stock.fiftyTwoWeekLow?.toFixed(2) || 'N/A'}
-              </TableCell>
-              <TableCell>
-                {stock.analystRating ? 
-                  `${stock.analystRating.firm}: ${stock.analystRating.grade}` : 
-                  'N/A'}
-              </TableCell>
-              <TableCell>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleRemoveStock(stock.symbol)
-                  }}
-                >
-                  Remove
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
+          {stockPrices.map((stock) => {
+            console.log('Rendering stock row:', stock);
+            return (
+              <TableRow 
+                key={stock.symbol}
+                className={cn(
+                  'cursor-pointer hover:bg-gray-50',
+                  selectedStock === stock.symbol && 'bg-blue-50 hover:bg-blue-100'
+                )}
+                onClick={() => handleStockSelect(stock.symbol)}
+              >
+                <TableCell className="font-medium">{stock.symbol}</TableCell>
+                <TableCell>{stock.shortName || stock.longName || stock.symbol}</TableCell>
+                <TableCell className="text-right">
+                  ${typeof stock.price === 'number' ? stock.price.toFixed(2) : 'N/A'}
+                </TableCell>
+                <TableCell className={cn(
+                  'text-right',
+                  stock.change > 0 ? 'text-green-600' : stock.change < 0 ? 'text-red-600' : ''
+                )}>
+                  {stock.change > 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)
+                </TableCell>
+                <TableCell className="text-right">
+                  {stock.volume ? formatNumber(stock.volume) : '-'}
+                </TableCell>
+                <TableCell className="text-right">
+                  {stock.marketCap ? formatMarketCap(stock.marketCap) : '-'}
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveStock(stock.symbol);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
 

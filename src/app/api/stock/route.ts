@@ -2,20 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
   console.log('GET /api/stock - Received request');
-  console.log('Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
   
   // Get the symbol from the search params
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get('symbol');
   
   if (!symbol) {
+    console.error('No symbol provided in request');
     return NextResponse.json(
       { error: 'Symbol is required' },
       { status: 400 }
     );
   }
   
-  console.log('Fetching stock data for symbol:', symbol);
+  console.log('Fetching stock price for symbol:', symbol);
   
   try {
     const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/${symbol}`;
@@ -33,14 +33,53 @@ export async function GET(request: NextRequest) {
       const error = await response.text();
       console.error('Backend error:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch stock data' },
+        { error: 'Failed to fetch stock price' },
         { status: response.status }
       );
     }
 
-    const data = await response.json();
-    console.log('Backend response data:', data);
-    return NextResponse.json(data);
+    const rawData = await response.json();
+    console.log('Raw backend response data:', rawData);
+    console.log('Raw data price fields:', {
+      currentPrice: rawData.currentPrice,
+      regularMarketPrice: rawData.regularMarketPrice,
+      price: rawData.price
+    });
+
+    // Transform the data to match frontend expectations
+    const price = rawData.currentPrice || rawData.regularMarketPrice || rawData.price;
+    console.log('Selected price:', price);
+
+    if (typeof price !== 'number' || isNaN(price)) {
+      console.error('Invalid price value:', price);
+      return NextResponse.json(
+        { error: 'Invalid price data received' },
+        { status: 400 }
+      );
+    }
+
+    const transformedData = {
+      symbol: symbol,
+      price: price,
+      change: rawData.change || rawData.regularMarketChange || 0,
+      changePercent: rawData.changePercent || rawData.regularMarketChangePercent || 0,
+      volume: rawData.volume || rawData.regularMarketVolume,
+      marketCap: rawData.marketCap,
+      shortName: rawData.shortName,
+      longName: rawData.longName
+    };
+    
+    console.log('Transformed data:', transformedData);
+    
+    if (!transformedData.price) {
+      console.error('No price data found in response:', rawData);
+      return NextResponse.json(
+        { error: 'No price data available' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(transformedData);
   } catch (error) {
     console.error('Error in GET /api/stock:', error);
     return NextResponse.json(
