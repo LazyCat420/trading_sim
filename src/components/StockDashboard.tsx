@@ -46,15 +46,25 @@ interface NewsItem {
 interface StockHistoryData {
   date: string;
   price: number;
+  volume: number;
+  high: number;
+  low: number;
+  open: number;
+  close: number;
 }
 
 interface StockHistoryResponse {
   data: StockHistoryData[];
 }
 
-interface DividendData {
+interface RawDividendData {
   date: string;
   amount: number;
+}
+
+interface DividendData {
+  date: string;
+  dividend: number;
 }
 
 interface EarningsData {
@@ -280,24 +290,32 @@ export default function StockDashboard() {
       const historyResponse = await fetch(`/api/stock/history?symbol=${symbol}`);
       console.log('fetchStockDetails - History response status:', historyResponse.status);
       const historyData = await historyResponse.json();
-      console.log('fetchStockDetails - History data:', historyData);
+      console.log('fetchStockDetails - Raw history data:', historyData);
 
       console.log('fetchStockDetails - Fetching dividend data...');
       const dividendResponse = await fetch(`/api/stock/dividends?symbol=${symbol}`);
       console.log('fetchStockDetails - Dividend response status:', dividendResponse.status);
       const dividendData = await dividendResponse.json();
-      console.log('fetchStockDetails - Dividend data:', dividendData);
+      console.log('fetchStockDetails - Raw dividend data:', dividendData);
 
       console.log('fetchStockDetails - Fetching earnings data...');
       const earningsResponse = await fetch(`/api/stock/earnings?symbol=${symbol}`);
       console.log('fetchStockDetails - Earnings response status:', earningsResponse.status);
       const earningsData = await earningsResponse.json();
-      console.log('fetchStockDetails - Earnings data:', earningsData);
+      console.log('fetchStockDetails - Raw earnings data:', earningsData);
 
       // Check if we got valid data arrays
-      const validHistoryData = Array.isArray(historyData) ? historyData : [];
-      const validDividendData = dividendData?.dividends || [];
+      const validHistoryData = historyData?.data || [];
+      console.log('fetchStockDetails - Processed history data:', validHistoryData);
+      
+      const validDividendData = dividendData?.dividends?.map((d: RawDividendData) => ({
+        date: d.date,
+        dividend: d.amount
+      })) || [];
+      console.log('fetchStockDetails - Processed dividend data:', validDividendData);
+      
       const validEarningsData = earningsData?.earnings || [];
+      console.log('fetchStockDetails - Processed earnings data:', validEarningsData);
 
       console.log('fetchStockDetails - Setting state with:', {
         historyLength: validHistoryData.length,
@@ -544,124 +562,22 @@ export default function StockDashboard() {
       )}
 
       {selectedStock && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div className="grid grid-cols-1 gap-4 mt-4">
           {stockHistory.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-4">
-              <h2 className="text-xl font-bold mb-4">Price History - {selectedStock}</h2>
-              <div className="w-full h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={stockHistory}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="date"
-                      tickFormatter={(date) => new Date(date).toLocaleDateString()}
-                    />
-                    <YAxis 
-                      domain={['auto', 'auto']}
-                      tickFormatter={(value) => `$${value.toFixed(2)}`}
-                    />
-                    <Tooltip
-                      labelFormatter={(date) => new Date(date).toLocaleDateString()}
-                      formatter={(value: number) => [`$${value.toFixed(2)}`, 'Price']}
-                    />
-                    <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="price"
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 8 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {dividendData.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-4">
-              <h2 className="text-xl font-bold mb-4">Dividend History - {selectedStock}</h2>
-              <div className="w-full h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={dividendData}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="date"
-                      tickFormatter={(date) => new Date(date).toLocaleDateString()}
-                    />
-                    <YAxis 
-                      domain={['auto', 'auto']}
-                      tickFormatter={(value) => `$${value.toFixed(2)}`}
-                    />
-                    <Tooltip
-                      labelFormatter={(date) => new Date(date).toLocaleDateString()}
-                      formatter={(value: number) => [`$${value.toFixed(2)}`, 'Dividend']}
-                    />
-                    <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="amount"
-                      stroke="#16a34a"
-                      strokeWidth={2}
-                      dot={true}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {earningsData.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-4">
-              <h2 className="text-xl font-bold mb-4">Earnings History - {selectedStock}</h2>
-              <div className="w-full h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={earningsData}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="date"
-                      tickFormatter={(date) => new Date(date).toLocaleDateString()}
-                    />
-                    <YAxis 
-                      domain={['auto', 'auto']}
-                      tickFormatter={(value) => `$${value.toFixed(2)}`}
-                    />
-                    <Tooltip
-                      labelFormatter={(date) => new Date(date).toLocaleDateString()}
-                      formatter={(value: number) => [`$${value.toFixed(2)}`, 'EPS']}
-                    />
-                    <Legend />
-                    <Line
-                      type="monotone"
-                      name="Actual EPS"
-                      dataKey="actualEPS"
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                      dot={true}
-                    />
-                    <Line
-                      type="monotone"
-                      name="Estimated EPS"
-                      dataKey="estimatedEPS"
-                      stroke="#dc2626"
-                      strokeWidth={2}
-                      dot={true}
-                      strokeDasharray="5 5"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+            <StockChart 
+              symbol={selectedStock} 
+              data={{ data: stockHistory.map(item => ({
+                date: item.date,
+                price: item.price,
+                volume: item.volume,
+                high: item.high,
+                low: item.low,
+                open: item.open,
+                close: item.close
+              }))}} 
+              dividendData={dividendData}
+              earningsData={earningsData}
+            />
           )}
         </div>
       )}

@@ -54,6 +54,12 @@ interface DividendData {
   dividend: number
 }
 
+interface EarningsData {
+  date: string
+  actualEPS: number
+  estimatedEPS: number
+}
+
 interface SimilarStock {
   symbol: string
   name: string
@@ -74,9 +80,11 @@ interface StockChartProps {
   data: {
     data: StockHistoryData[];
   };
+  dividendData?: DividendData[];
+  earningsData?: EarningsData[];
 }
 
-export default function StockChart({ symbol, data }: StockChartProps) {
+export default function StockChart({ symbol, data, dividendData = [], earningsData = [] }: StockChartProps) {
   const [timeframe, setTimeframe] = useState<string>("1d")
   const [stockData, setStockData] = useState<StockHistoryData[]>(data.data)
   const [dividendHistory, setDividendHistory] = useState<DividendData[]>([])
@@ -195,13 +203,7 @@ export default function StockChart({ symbol, data }: StockChartProps) {
     )
   }
 
-  const chartData = data.data;
-
-  // Calculate 52-week high and low
-  const fiftyTwoWeekHigh = Math.max(...chartData.map((d: StockHistoryData) => d.high))
-  const fiftyTwoWeekLow = Math.min(...chartData.map((d: StockHistoryData) => d.low))
-
-  const chartConfig = {
+  const chartData = {
     labels: stockData.map(d => {
       const date = new Date(d.date);
       // Format based on timeframe
@@ -222,6 +224,17 @@ export default function StockChart({ symbol, data }: StockChartProps) {
         backgroundColor: 'rgba(136, 132, 216, 0.3)',
         tension: 0.4,
         pointRadius: timeframe === "1d" ? 2 : 1,
+        yAxisID: 'y'
+      },
+      {
+        label: 'Volume',
+        data: stockData.map(d => d.volume),
+        fill: true,
+        borderColor: '#82ca9d',
+        backgroundColor: 'rgba(130, 202, 157, 0.3)',
+        tension: 0.4,
+        pointRadius: 0,
+        yAxisID: 'y1'
       }
     ]
   }
@@ -276,6 +289,20 @@ export default function StockChart({ symbol, data }: StockChartProps) {
         grid: {
           color: 'rgba(0, 0, 0, 0.1)'
         }
+      },
+      y1: {
+        position: 'left',
+        ticks: {
+          callback: function(value) {
+            if (typeof value === 'number') {
+              return formatVolume(value)
+            }
+            return value
+          }
+        },
+        grid: {
+          display: false
+        }
       }
     },
     onClick: handleChartClick,
@@ -284,6 +311,17 @@ export default function StockChart({ symbol, data }: StockChartProps) {
       mode: 'index'
     }
   }
+
+  const formatVolume = (volume: number) => {
+    if (volume >= 1e9) return `${(volume / 1e9).toFixed(1)}B`;
+    if (volume >= 1e6) return `${(volume / 1e6).toFixed(1)}M`;
+    if (volume >= 1e3) return `${(volume / 1e3).toFixed(1)}K`;
+    return volume.toString();
+  };
+
+  // Calculate 52-week high and low
+  const fiftyTwoWeekHigh = Math.max(...stockData.map(d => d.high));
+  const fiftyTwoWeekLow = Math.min(...stockData.map(d => d.low));
 
   const dividendChartData = {
     labels: dividendHistory.map(d => d.date),
@@ -385,7 +423,7 @@ export default function StockChart({ symbol, data }: StockChartProps) {
         </CardHeader>
         <CardContent>
           <div className="h-[300px] w-full">
-            <Line data={chartConfig} options={chartOptions} />
+            <Line data={chartData} options={chartOptions} />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
             <div>
@@ -398,11 +436,70 @@ export default function StockChart({ symbol, data }: StockChartProps) {
         </CardContent>
       </Card>
 
-      <CollapsibleCard title="Dividend History">
-        <div className="h-[200px] w-full">
-          <Bar data={dividendChartData} options={dividendChartOptions} />
-        </div>
-      </CollapsibleCard>
+      {dividendData.length > 0 && (
+        <CollapsibleCard title="Dividend History">
+          <div className="h-[200px] w-full">
+            <Bar data={dividendChartData} options={dividendChartOptions} />
+          </div>
+        </CollapsibleCard>
+      )}
+
+      {earningsData.length > 0 && (
+        <CollapsibleCard title="Earnings History">
+          <div className="h-[200px] w-full">
+            <Line 
+              data={{
+                labels: earningsData.map(d => new Date(d.date).toLocaleDateString()),
+                datasets: [
+                  {
+                    label: 'Actual EPS',
+                    data: earningsData.map(d => d.actualEPS),
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    pointRadius: 4
+                  },
+                  {
+                    label: 'Estimated EPS',
+                    data: earningsData.map(d => d.estimatedEPS),
+                    borderColor: '#dc2626',
+                    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                    pointRadius: 4,
+                    borderDash: [5, 5]
+                  }
+                ]
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    position: 'top'
+                  },
+                  tooltip: {
+                    callbacks: {
+                      label: function(context) {
+                        return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`
+                      }
+                    }
+                  }
+                },
+                scales: {
+                  y: {
+                    ticks: {
+                      callback: function(value) {
+                        if (typeof value === 'number') {
+                          return `$${value.toFixed(2)}`
+                        }
+                        return value
+                      }
+                    }
+                  }
+                }
+              }}
+            />
+          </div>
+        </CollapsibleCard>
+      )}
 
       <CollapsibleCard title="Similar Stocks">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
