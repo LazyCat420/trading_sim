@@ -64,6 +64,39 @@ export default function StockDashboard() {
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
   const [stockHistory, setStockHistory] = useState<StockHistoryResponse>({ data: [] })
 
+  // Load watchlist on component mount
+  useEffect(() => {
+    const loadWatchlist = async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const response = await fetch('/api/stock')
+        const data = await response.json()
+        
+        if (response.ok) {
+          // Convert watchlist data to StockData format
+          const stocksData = await Promise.all(
+            data.map(async (item: any) => {
+              const stockResponse = await fetch(`/api/stock?symbol=${item.symbol}`)
+              const stockData = await stockResponse.json()
+              return stockData
+            })
+          )
+          setStocks(stocksData.filter((stock: StockData | null) => stock !== null))
+        } else {
+          setError(data.error || 'Failed to load watchlist')
+        }
+      } catch (error) {
+        console.error('Error loading watchlist:', error)
+        setError('Failed to load watchlist')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadWatchlist()
+  }, [])
+
   const fetchNews = async (symbols: string[]) => {
     if (symbols.length === 0) {
       console.log('No symbols provided, fetching market news');
@@ -176,10 +209,25 @@ export default function StockDashboard() {
     setError(null)
     
     try {
-      const data = await fetchStockPrice(searchSymbol.toUpperCase())
-      if (data) {
-        setStocks(prev => [...prev, data])
-        // Select the newly added stock
+      const stockData = await fetchStockPrice(searchSymbol.toUpperCase())
+      if (stockData) {
+        // Add to watchlist in database
+        const response = await fetch('/api/stock', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            symbol: searchSymbol.toUpperCase(),
+            name: stockData.shortName || stockData.longName,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to add stock to watchlist')
+        }
+
+        setStocks(prev => [...prev, stockData])
         await handleStockSelect(searchSymbol.toUpperCase())
         setSearchSymbol('')
       }
@@ -210,21 +258,34 @@ export default function StockDashboard() {
     }
   }
 
-  const handleRemoveStock = (symbol: string) => {
-    setStocks(prev => {
-      const newStocks = prev.filter(stock => stock.symbol !== symbol)
-      // If removing selected stock, select first available stock or clear selection
-      if (symbol === selectedStock) {
-        const nextStock = newStocks[0]
-        if (nextStock) {
-          handleStockSelect(nextStock.symbol)
-        } else {
-          setSelectedStock(null)
-          setNews([])
-        }
+  const handleRemoveStock = async (symbol: string) => {
+    try {
+      const response = await fetch(`/api/stock?symbol=${symbol}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to remove stock from watchlist')
       }
-      return newStocks
-    })
+
+      setStocks(prev => {
+        const newStocks = prev.filter(stock => stock.symbol !== symbol)
+        // If removing selected stock, select first available stock or clear selection
+        if (symbol === selectedStock) {
+          const nextStock = newStocks[0]
+          if (nextStock) {
+            handleStockSelect(nextStock.symbol)
+          } else {
+            setSelectedStock(null)
+            setNews([])
+          }
+        }
+        return newStocks
+      })
+    } catch (error) {
+      console.error('Error removing stock:', error)
+      setError('Failed to remove stock from watchlist')
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

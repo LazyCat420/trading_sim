@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 import yfinance as yf
 import pandas as pd
+from database import get_db
 
 # Load environment variables
 load_dotenv()
@@ -17,15 +18,6 @@ load_dotenv()
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Verify API keys are loaded
-alpha_vantage_key = os.getenv('ALPHAVANTAGE_API_KEY')
-
-if not alpha_vantage_key:
-    logger.error("Alpha Vantage API key not found in environment variables")
-    raise ValueError("Alpha Vantage API key not found")
-else:
-    logger.info("Alpha Vantage API key loaded successfully")
 
 router = APIRouter()
 
@@ -91,6 +83,22 @@ class StockInfo(BaseModel):
     exchange: Optional[str] = None
     currency: Optional[str] = None
     analystRating: Optional[dict] = None
+
+class StockCreate(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+
+class StockResponse(BaseModel):
+    id: int
+    symbol: str
+    name: Optional[str]
+    added_at: datetime
+    last_price: Optional[float]
+    last_updated: Optional[datetime]
+    is_active: bool
+
+    class Config:
+        from_attributes = True
 
 @router.get("/{symbol}")
 @retry_on_failure(max_retries=3, delay=1)
@@ -443,6 +451,143 @@ async def get_market_news(
         logger.error(f"Error in market news endpoint: {str(e)}")
         logger.exception("Full traceback:")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/watchlist/")
+async def add_to_watchlist(stock: StockCreate):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            # Check if stock exists and is active
+            cursor.execute(
+                "SELECT * FROM stocks WHERE symbol = ? AND is_active = 1", 
+                (stock.symbol,)
+            )
+            if cursor.fetchone():
+                raise HTTPException(status_code=400, detail="Stock already in watchlist")
+
+            # Check if stock exists but is inactive
+            cursor.execute(
+                "SELECT * FROM stocks WHERE symbol = ? AND is_active = 0", 
+                (stock.symbol,)
+            )
+            inactive_stock = cursor.fetchone()
+            
+            if inactive_stock:
+                # Reactivate the stock
+                cursor.execute(
+                    "UPDATE stocks SET is_active = 1, last_updated = ? WHERE symbol = ?",
+                    (datetime.utcnow(), stock.symbol)
+                )
+            else:
+                # Add new stock
+                cursor.execute("""
+                    INSERT INTO stocks (symbol, name, last_updated)
+                    VALUES (?, ?, ?)
+                """, (stock.symbol, stock.name, datetime.utcnow()))
+            
+            conn.commit()
+            
+            # Get the inserted/updated stock
+            cursor.execute("SELECT * FROM stocks WHERE symbol = ?", (stock.symbol,))
+            db_stock = cursor.fetchone()
+            
+            return {
+                "id": db_stock["id"],
+                "symbol": db_stock["symbol"],
+                "name": db_stock["name"],
+                "added_at": db_stock["added_at"],
+                "last_price": db_stock["last_price"],
+                "last_updated": db_stock["last_updated"],
+                "is_active": bool(db_stock["is_active"])
+            }
+            
+        except Exception as e:
+            conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/watchlist/")
+async def get_watchlist():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM stocks WHERE is_active = 1")
+        stocks = cursor.fetchall()
+        
+        return [{
+            "id": stock["id"],
+            "symbol": stock["symbol"],
+            "name": stock["name"],
+            "added_at": stock["added_at"],
+            "last_price": stock["last_price"],
+            "last_updated": stock["last_updated"],
+            "is_active": bool(stock["is_active"])
+        } for stock in stocks]
+
+@router.delete("/watchlist/{symbol}")
+async def remove_from_watchlist(symbol: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM stocks WHERE symbol = ?", (symbol,))
+        stock = cursor.fetchone()
+        
+        if not stock:
+            raise HTTPException(status_code=404, detail="Stock not found")
+        
+        cursor.execute(
+            "UPDATE stocks SET is_active = 0 WHERE symbol = ?",
+            (symbol,)
+        )
+        conn.commit()
+        
+        return {"message": "Stock removed from watchlist"}
+
+@router.get("/{symbol}")
+async def get_stock_data(symbol: str):
+    try:
+        # Get stock data from yfinance
+        stock = yf.Ticker(symbol)
+        info = stock.info
+        
+        # Update database if stock is in watchlist
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM stocks WHERE symbol = ? AND is_active = 1", 
+                (symbol,)
+            )
+            db_stock = cursor.fetchone()
+            
+            if db_stock:
+                cursor.execute("""
+                    UPDATE stocks 
+                    SET last_price = ?, last_updated = ?, name = COALESCE(name, ?)
+                    WHERE symbol = ?
+                """, (
+                    info.get('regularMarketPrice'),
+                    datetime.utcnow(),
+                    info.get('shortName') or info.get('longName'),
+                    symbol
+                ))
+                conn.commit()
+        
+        return {
+            "symbol": symbol,
+            "currentPrice": info.get('regularMarketPrice'),
+            "change": info.get('regularMarketChange'),
+            "changePercent": info.get('regularMarketChangePercent'),
+            "volume": info.get('regularMarketVolume'),
+            "marketCap": info.get('marketCap'),
+            "peRatio": info.get('forwardPE'),
+            "dividendYield": info.get('dividendYield'),
+            "fiftyTwoWeekHigh": info.get('fiftyTwoWeekHigh'),
+            "fiftyTwoWeekLow": info.get('fiftyTwoWeekLow'),
+            "shortName": info.get('shortName'),
+            "longName": info.get('longName'),
+            "sector": info.get('sector'),
+            "industry": info.get('industry')
+        }
+    except Exception as e:
+        logger.error(f"Error fetching stock data for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch stock data: {str(e)}")
 
 # Export the router instead of app
 app = router
