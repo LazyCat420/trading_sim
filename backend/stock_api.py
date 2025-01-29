@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import yfinance as yf
 import pandas as pd
 from database import get_db
+import database as db
 
 # Load environment variables
 load_dotenv()
@@ -99,6 +100,16 @@ class StockResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Watchlist models
+class WatchlistItem(BaseModel):
+    symbol: str
+
+class WatchlistResponse(BaseModel):
+    symbol: str
+    name: str | None
+    last_price: float | None
+    last_updated: str | None
 
 @router.get("/{symbol}")
 @retry_on_failure(max_retries=3, delay=1)
@@ -588,6 +599,34 @@ async def get_stock_data(symbol: str):
     except Exception as e:
         logger.error(f"Error fetching stock data for {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch stock data: {str(e)}")
+
+# Watchlist endpoints
+@router.post("/watchlist/{user_id}/add", response_model=dict)
+async def add_to_watchlist(user_id: int, item: WatchlistItem):
+    success = db.add_to_watchlist(user_id, item.symbol)
+    if not success:
+        raise HTTPException(status_code=400, message="Stock already in watchlist")
+    return {"message": "Stock added to watchlist"}
+
+@router.delete("/watchlist/{user_id}/remove/{symbol}")
+async def remove_from_watchlist(user_id: int, symbol: str):
+    success = db.remove_from_watchlist(user_id, symbol)
+    if not success:
+        raise HTTPException(status_code=404, message="Stock not found in watchlist")
+    return {"message": "Stock removed from watchlist"}
+
+@router.get("/watchlist/{user_id}", response_model=List[WatchlistResponse])
+async def get_watchlist(user_id: int):
+    watchlist = db.get_user_watchlist(user_id)
+    return [
+        WatchlistResponse(
+            symbol=item['symbol'],
+            name=item['name'],
+            last_price=item['last_price'],
+            last_updated=item['last_updated']
+        )
+        for item in watchlist
+    ]
 
 # Export the router instead of app
 app = router

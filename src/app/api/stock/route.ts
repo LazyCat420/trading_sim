@@ -1,38 +1,52 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const symbol = searchParams.get('symbol')
-
+export async function GET(request: NextRequest) {
+  console.log('GET /api/stock - Received request');
+  console.log('Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+  
+  // Get the symbol from the search params
+  const { searchParams } = new URL(request.url);
+  const symbol = searchParams.get('symbol');
+  
   if (!symbol) {
-    // If no symbol is provided, return the watchlist
-    try {
-      const response = await fetch('http://localhost:8000/stock/watchlist/')
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to fetch watchlist')
-      }
-
-      return NextResponse.json(data)
-    } catch (error) {
-      console.error('Error fetching watchlist:', error)
-      return NextResponse.json({ error: 'Failed to fetch watchlist' }, { status: 500 })
-    }
+    return NextResponse.json(
+      { error: 'Symbol is required' },
+      { status: 400 }
+    );
   }
-
+  
+  console.log('Fetching stock data for symbol:', symbol);
+  
   try {
-    const response = await fetch(`http://localhost:8000/stock/${symbol}`)
-    const data = await response.json()
-
+    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/${symbol}`;
+    console.log('Fetching from backend URL:', url);
+    
+    const response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    console.log('Backend response status:', response.status);
+    
     if (!response.ok) {
-      throw new Error(data.detail || 'Failed to fetch stock data')
+      const error = await response.text();
+      console.error('Backend error:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch stock data' },
+        { status: response.status }
+      );
     }
 
-    return NextResponse.json(data)
+    const data = await response.json();
+    console.log('Backend response data:', data);
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching stock data:', error)
-    return NextResponse.json({ error: 'Failed to fetch stock data' }, { status: 500 })
+    console.error('Error in GET /api/stock:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 

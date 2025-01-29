@@ -68,31 +68,41 @@ export default function StockDashboard() {
   useEffect(() => {
     const loadWatchlist = async () => {
       try {
-        setIsLoading(true)
-        setError(null)
-        const response = await fetch('/api/stock')
-        const data = await response.json()
+        console.log('Loading watchlist...');
+        setIsLoading(true);
+        setError(null);
+        
+        const response = await fetch('/api/stock/watchlist/1');
+        console.log('Watchlist response status:', response.status);
+        const data = await response.json();
+        console.log('Watchlist response data:', data);
         
         if (response.ok) {
           // Convert watchlist data to StockData format
+          console.log('Fetching individual stock data...');
           const stocksData = await Promise.all(
             data.map(async (item: any) => {
-              const stockResponse = await fetch(`/api/stock?symbol=${item.symbol}`)
-              const stockData = await stockResponse.json()
-              return stockData
+              console.log('Fetching data for stock:', item.symbol);
+              const stockResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/${item.symbol}`);
+              const stockData = await stockResponse.json();
+              console.log('Stock data for', item.symbol, ':', stockData);
+              return stockData;
             })
-          )
-          setStocks(stocksData.filter((stock: StockData | null) => stock !== null))
+          );
+          const filteredStocks = stocksData.filter((stock: StockData | null) => stock !== null);
+          console.log('Setting stocks:', filteredStocks);
+          setStocks(filteredStocks);
         } else {
-          setError(data.error || 'Failed to load watchlist')
+          console.error('Failed to load watchlist:', data.error);
+          setError(data.error || 'Failed to load watchlist');
         }
       } catch (error) {
-        console.error('Error loading watchlist:', error)
-        setError('Failed to load watchlist')
+        console.error('Error in loadWatchlist:', error);
+        setError('Failed to load watchlist');
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
     loadWatchlist()
   }, [])
@@ -159,7 +169,7 @@ export default function StockDashboard() {
 
   const fetchStockPrice = async (symbol: string): Promise<StockData | null> => {
     try {
-      const response = await fetch(`/stock/${symbol}`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/${symbol}`)
       const data = await response.json()
       
       if (data.error) {
@@ -176,7 +186,7 @@ export default function StockDashboard() {
 
   const fetchStockHistory = async (symbol: string) => {
     try {
-      const response = await fetch(`/stock/history/${symbol}`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/history/${symbol}`)
       const data = await response.json()
       
       if (data.error) {
@@ -211,15 +221,14 @@ export default function StockDashboard() {
     try {
       const stockData = await fetchStockPrice(searchSymbol.toUpperCase())
       if (stockData) {
-        // Add to watchlist in database
-        const response = await fetch('/api/stock', {
+        // Add to watchlist using new endpoint
+        const response = await fetch('/api/stock/watchlist/1/add', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            symbol: searchSymbol.toUpperCase(),
-            name: stockData.shortName || stockData.longName,
+            symbol: searchSymbol.toUpperCase()
           }),
         })
 
@@ -260,31 +269,27 @@ export default function StockDashboard() {
 
   const handleRemoveStock = async (symbol: string) => {
     try {
-      const response = await fetch(`/api/stock?symbol=${symbol}`, {
-        method: 'DELETE',
+      setIsLoading(true)
+      setError(null)
+      
+      // Remove from watchlist using new endpoint
+      const response = await fetch(`/api/stock/watchlist/1/remove/${symbol}`, {
+        method: 'DELETE'
       })
 
       if (!response.ok) {
         throw new Error('Failed to remove stock from watchlist')
       }
 
-      setStocks(prev => {
-        const newStocks = prev.filter(stock => stock.symbol !== symbol)
-        // If removing selected stock, select first available stock or clear selection
-        if (symbol === selectedStock) {
-          const nextStock = newStocks[0]
-          if (nextStock) {
-            handleStockSelect(nextStock.symbol)
-          } else {
-            setSelectedStock(null)
-            setNews([])
-          }
-        }
-        return newStocks
-      })
+      setStocks(prev => prev.filter(stock => stock.symbol !== symbol))
+      if (selectedStock === symbol) {
+        setSelectedStock(null)
+        setStockHistory({ data: [] })
+      }
     } catch (error) {
-      console.error('Error removing stock:', error)
-      setError('Failed to remove stock from watchlist')
+      setError('Failed to remove stock')
+    } finally {
+      setIsLoading(false)
     }
   }
 

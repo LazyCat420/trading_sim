@@ -1,0 +1,92 @@
+Rules:
+1. Project Structure and Planning
+Define Requirements: Clearly outline what data needs to be collected, how it will be displayed, and any specific user interactions required.
+
+Choose Stack: For simplicity and reliability, you might use a combination of:
+
+Backend: Python with FastAPI
+
+Frontend: Next.jswith React
+
+Databases: SQLite for regular data storage and ChromaDB for vector database storage for the chatbot
+
+2. Database Design
+SQLite Schema: Design your SQLite database schema to include tables for stock market data, user information, and any other required entities.
+
+Tables: Example tables might include Stocks (id, symbol, name, price, date, volume), Dividends (id, stock_id, amount, date), and Users (id, username, email, password).
+
+Relationships: Clearly define relationships between tables, such as user-specific watchlists.
+
+ChromaDB Usage: Use ChromaDB to store and retrieve vector data for chatbot responses. Structure the data to facilitate efficient querying and retrieval based on user interactions.
+
+3. Backend Development
+Set Up Environment: Set up a virtual environment and install necessary dependencies (FastAPI, SQLite, SQLAlchemy for ORM, ChromaDB).
+
+API Design: Design RESTful APIs to handle CRUD operations and data retrieval:
+
+Create: Endpoint to insert new stock data.
+
+Read: Endpoint to fetch stock data, historical data, dividend history, similar stocks, and chatbot responses.
+
+Update: Endpoint to update existing stock data.
+
+Delete: Endpoint to delete stock data.
+
+Data Validation: Implement data validation to ensure data consistency.
+
+Authentication & Authorization: Implement JWT-based authentication for secure access.
+
+4. Frontend Development
+UI/UX Design: Create wireframes/mockups to design a user-friendly interface. Use tools like Figma or Sketch.
+
+Component Structure: Define a clear component structure with React components for displaying stock data, user login, historical charts, dividend history, and chatbot interactions.
+
+State Management: Use state management libraries like Redux to handle application state.
+
+API Integration: Use Axios or Fetch API to integrate with the backend. Display data in tables or charts using libraries like Chart.jsor D3.js.
+
+Error Handling: Implement user-friendly error handling to manage API errors and user input validation.
+
+5. Data Handling and Storage
+Cron Jobs/Scheduler: Set up cron jobs or task schedulers to fetch stock market data at regular intervals using yfinance.
+
+Data Parsing: Implement parsers to process and store data into SQLite database.
+
+Vector Data: Store and retrieve vector data using ChromaDB for chatbot interactions.
+
+Data Aggregation: Aggregate data as needed for various analytical or reporting purposes.
+
+6. Testing and Deployment
+Unit Testing: Write unit tests for backend APIs and frontend components.
+
+Integration Testing: Test the integration between frontend and backend.
+
+Deployment:
+
+Backend: Deploy backend on platforms like Heroku, AWS, or DigitalOcean.
+
+Frontend: Host frontend on services like Netlify or Vercel.
+
+Databases: Ensure SQLite and ChromaDB are properly configured and backed up.
+
+7. Best Practices and Strategies
+Security: Implement security best practices like HTTPS, secure token storage, and input sanitization.
+
+Code Quality: Follow coding standards and best practices. Use linters and formatters.
+
+Documentation: Maintain clear documentation for APIs, codebase, and user guides.
+
+Scalability: Although SQLite is great for small projects, consider future scalability with databases like PostgreSQL or MySQL.
+
+Additional Requirements
+Features:
+
+Real-time stock price data
+
+Historical price charts (daily, weekly, monthly, yearly, 5-year, and 10-year views)
+
+Dividend history tracking
+
+Similar stocks suggestions
+
+52-week high and low tracking
