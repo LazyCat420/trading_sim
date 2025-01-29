@@ -15,18 +15,24 @@ export function CollapsibleCard({
   title, 
   children, 
   className,
-  defaultExpanded = true 
+  defaultExpanded = false 
 }: CollapsibleCardProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
   return (
     <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4">
+      <CardHeader 
+        className="flex flex-row items-center justify-between space-y-0 p-4 cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
         {title}
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(!isExpanded);
+          }}
           className="h-8 w-8"
         >
           {isExpanded ? (
@@ -38,13 +44,11 @@ export function CollapsibleCard({
       </CardHeader>
       <CardContent
         className={cn(
-          "grid transition-all",
-          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          "overflow-hidden transition-all duration-200",
+          isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0 p-0"
         )}
       >
-        <div className="overflow-hidden">
-          {children}
-        </div>
+        {children}
       </CardContent>
     </Card>
   )

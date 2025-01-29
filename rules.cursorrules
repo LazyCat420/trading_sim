@@ -1,4 +1,5 @@
 Rules:
+THE MOST IMPORTANT RULE IS ALWAYS CONSOLE LOG AND DEBUG UNTIL YOU FIX THE ISSUE. ONCE THE ISSUE IS FIXED REMOVE THE CONSOLE LOGS TO PREVENT TO CODE FROM BEING TOO MESSY AND LAGGY. 
 1. Project Structure and Planning
 Define Requirements: Clearly outline what data needs to be collected, how it will be displayed, and any specific user interactions required.
 
@@ -90,3 +91,47 @@ Dividend history tracking
 Similar stocks suggestions
 
 52-week high and low tracking
+
+Add all of these as chart options. 
+
+Here's a list of important stock market data that you can pull from Yahoo Finance (yfinance) for your charts:
+
+Current Stock Price
+
+Opening Price
+
+Closing Price
+
+52-Week High/Low
+
+Daily, Weekly, Monthly, Yearly, 5-Year, and 10-Year Price Data
+
+Dividend Yield
+
+Dividend History
+
+Volume
+
+Market Capitalization
+
+P/E Ratio (Price-to-Earnings)
+
+EPS (Earnings Per Share)
+
+Beta (Volatility)
+
+Short Interest
+
+Analyst Ratings
+
+Moving Averages (e.g., 50-day, 200-day)
+
+Relative Strength Index (RSI)
+
+MACD (Moving Average Convergence Divergence)
+
+Volume-Weighted Average Price (VWAP)
+
+Daily High/Low
+
+Historical Dividends

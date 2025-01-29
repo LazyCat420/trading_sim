@@ -162,20 +162,51 @@ def add_to_watchlist(user_id: int, stock_symbol: str) -> bool:
             print(f"Error adding stock {stock_symbol}: {str(e)}")
             raise
 
+def clear_watchlist(user_id: int):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM watchlist WHERE user_id = ?', (user_id,))
+        cursor.execute('UPDATE stocks SET is_active = 0')
+        conn.commit()
+        logger.info(f"Cleared watchlist for user {user_id}")
+
 def remove_from_watchlist(user_id: int, stock_symbol: str) -> bool:
     with get_db() as conn:
         cursor = conn.cursor()
-        print(f"Removing stock {stock_symbol} from watchlist for user {user_id}")
-        cursor.execute('''
-            DELETE FROM watchlist 
-            WHERE user_id = ? AND stock_id IN (
-                SELECT id FROM stocks WHERE symbol = ?
-            )
-        ''', (user_id, stock_symbol))
-        conn.commit()
-        rows_affected = cursor.rowcount
-        print(f"Removed {rows_affected} watchlist entries")
-        return rows_affected > 0
+        try:
+            # First, get the stock_id
+            cursor.execute('SELECT id FROM stocks WHERE symbol = ?', (stock_symbol,))
+            stock = cursor.fetchone()
+            
+            if not stock:
+                logger.error(f"Stock {stock_symbol} not found in stocks table")
+                return False
+                
+            stock_id = stock['id']
+            
+            # Then delete from watchlist
+            cursor.execute('''
+                DELETE FROM watchlist 
+                WHERE user_id = ? AND stock_id = ?
+            ''', (user_id, stock_id))
+            
+            # Update the stock's active status
+            cursor.execute('''
+                UPDATE stocks 
+                SET is_active = CASE 
+                    WHEN EXISTS (SELECT 1 FROM watchlist WHERE stock_id = ?) THEN 1 
+                    ELSE 0 
+                END 
+                WHERE id = ?
+            ''', (stock_id, stock_id))
+            
+            conn.commit()
+            rows_affected = cursor.rowcount
+            logger.info(f"Removed stock {stock_symbol} from watchlist. Rows affected: {rows_affected}")
+            return rows_affected > 0
+        except Exception as e:
+            logger.error(f"Error removing stock {stock_symbol} from watchlist: {str(e)}")
+            return False
 
 def get_user_watchlist(user_id: int):
     with get_db() as conn:

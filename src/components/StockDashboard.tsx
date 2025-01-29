@@ -51,6 +51,11 @@ interface StockHistoryData {
   low: number;
   open: number;
   close: number;
+  sma50: number | null;
+  sma200: number | null;
+  rsi: number | null;
+  macd: number | null;
+  vwap: number | null;
 }
 
 interface StockHistoryResponse {
@@ -237,14 +242,21 @@ export default function StockDashboard() {
       const data = await response.json();
       console.log('fetchStockPrice - Raw response data:', data);
       
-      if (!data || typeof data.price !== 'number') {
-        console.error('fetchStockPrice - Invalid data structure:', data);
-        throw new Error('Invalid stock price data received');
+      if (!data) {
+        console.error('fetchStockPrice - No data received');
+        throw new Error('No stock data received');
+      }
+
+      // Ensure price is a number
+      const price = typeof data.price === 'number' ? data.price : parseFloat(data.price);
+      if (isNaN(price)) {
+        console.error('fetchStockPrice - Invalid price value:', data.price);
+        throw new Error('Invalid price data received');
       }
       
       const stockData = {
         symbol: symbol.toUpperCase(),
-        price: data.price,
+        price: price,
         change: data.change || 0,
         changePercent: data.changePercent || 0,
         volume: data.volume,
@@ -304,8 +316,21 @@ export default function StockDashboard() {
       const earningsData = await earningsResponse.json();
       console.log('fetchStockDetails - Raw earnings data:', earningsData);
 
-      // Check if we got valid data arrays
-      const validHistoryData = historyData?.data || [];
+      // Format history data for the chart
+      const validHistoryData = historyData?.data?.map((item: any) => ({
+        date: item.date,
+        price: item.price,
+        volume: item.volume,
+        high: item.high,
+        low: item.low,
+        open: item.open,
+        close: item.close,
+        sma50: null,
+        sma200: null,
+        rsi: null,
+        macd: null,
+        vwap: null
+      })) || [];
       console.log('fetchStockDetails - Processed history data:', validHistoryData);
       
       const validDividendData = dividendData?.dividends?.map((d: RawDividendData) => ({
@@ -396,7 +421,8 @@ export default function StockDashboard() {
           }),
         });
         
-        console.log('handleAddStock - Watchlist add response:', response.status);
+        console.log('handleAddStock - Watchlist add response status:', response.status);
+        console.log('handleAddStock - Watchlist add response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -407,8 +433,20 @@ export default function StockDashboard() {
         const responseData = await response.json();
         console.log('handleAddStock - Watchlist add response data:', responseData);
 
-        setStockPrices(prev => [...prev, stockData]);
-        setWatchlist(prev => [...prev, searchSymbol.toUpperCase()]);
+        // Update state with new stock data
+        console.log('handleAddStock - Current stockPrices:', stockPrices);
+        setStockPrices(prev => {
+          const newStockPrices = [...prev, stockData];
+          console.log('handleAddStock - Updated stockPrices:', newStockPrices);
+          return newStockPrices;
+        });
+        
+        setWatchlist(prev => {
+          const newWatchlist = [...prev, searchSymbol.toUpperCase()];
+          console.log('handleAddStock - Updated watchlist:', newWatchlist);
+          return newWatchlist;
+        });
+
         await handleStockSelect(searchSymbol.toUpperCase());
         setSearchSymbol('');
         console.log('handleAddStock - Successfully added stock');
@@ -439,30 +477,84 @@ export default function StockDashboard() {
 
   const handleRemoveStock = async (symbol: string) => {
     try {
-      setIsLoading(true)
-      setError(null)
+      setIsLoading(true);
+      setError(null);
+      
+      console.log('handleRemoveStock - Removing stock:', symbol);
       
       // Remove from watchlist using new endpoint
       const response = await fetch(`/api/stock/watchlist/1/remove/${symbol}`, {
         method: 'DELETE'
-      })
+      });
 
+      console.log('handleRemoveStock - Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to remove stock from watchlist')
+        const errorText = await response.text();
+        console.error('handleRemoveStock - Error response:', errorText);
+        throw new Error('Failed to remove stock from watchlist');
       }
 
-      setStockPrices(prev => prev.filter(stock => stock.symbol !== symbol))
-      setWatchlist(prev => prev.filter(s => s !== symbol))
+      console.log('handleRemoveStock - Successfully removed from watchlist');
+      
+      // Update local state
+      setStockPrices(prev => {
+        const newStockPrices = prev.filter(stock => stock.symbol !== symbol);
+        console.log('handleRemoveStock - Updated stockPrices:', newStockPrices);
+        return newStockPrices;
+      });
+      
+      setWatchlist(prev => {
+        const newWatchlist = prev.filter(s => s !== symbol);
+        console.log('handleRemoveStock - Updated watchlist:', newWatchlist);
+        return newWatchlist;
+      });
+
       if (selectedStock === symbol) {
-        setSelectedStock(null)
+        setSelectedStock(null);
         setStockHistory([]);
       }
     } catch (error) {
-      setError('Failed to remove stock')
+      console.error('handleRemoveStock - Error:', error);
+      setError('Failed to remove stock');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
+
+  const handleClearWatchlist = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      console.log('handleClearWatchlist - Clearing watchlist');
+      
+      const response = await fetch('/api/stock/watchlist/1/clear', {
+        method: 'DELETE'
+      });
+
+      console.log('handleClearWatchlist - Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('handleClearWatchlist - Error response:', errorText);
+        throw new Error('Failed to clear watchlist');
+      }
+
+      console.log('handleClearWatchlist - Successfully cleared watchlist');
+      
+      // Clear local state
+      setStockPrices([]);
+      setWatchlist([]);
+      setSelectedStock(null);
+      setStockHistory([]);
+    } catch (error) {
+      console.error('handleClearWatchlist - Error:', error);
+      setError('Failed to clear watchlist');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -533,113 +625,88 @@ export default function StockDashboard() {
   };
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="flex gap-2">
-        <Input
-          placeholder="Enter stock symbol..."
-          value={searchSymbol}
-          onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
-          onKeyPress={handleKeyPress}
-          disabled={isLoading}
-        />
-        <Button 
-          onClick={handleAddStock} 
-          disabled={isLoading}
-        >
-          {isLoading ? 'Adding...' : 'Add Stock'}
+    <div className="space-y-4">
+      <div className="flex items-center gap-4 mb-4">
+        <div className="flex-1">
+          <Input
+            type="text"
+            placeholder="Enter stock symbol..."
+            value={searchSymbol}
+            onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleAddStock();
+              }
+            }}
+          />
+        </div>
+        <Button onClick={handleAddStock} disabled={isLoading}>
+          Add Stock
         </Button>
-        <Button
-          variant="outline"
-          onClick={handleRefreshAll}
-          disabled={isLoading || watchlist.length === 0}
-        >
+        <Button onClick={handleRefreshAll} disabled={isLoading} variant="outline">
           Refresh All
         </Button>
       </div>
 
       {error && (
-        <div className="text-red-500 bg-red-50 p-2 rounded">{error}</div>
-      )}
-
-      {selectedStock && (
-        <div className="grid grid-cols-1 gap-4 mt-4">
-          {stockHistory.length > 0 && (
-            <StockChart 
-              symbol={selectedStock} 
-              data={{ data: stockHistory.map(item => ({
-                date: item.date,
-                price: item.price,
-                volume: item.volume,
-                high: item.high,
-                low: item.low,
-                open: item.open,
-                close: item.close
-              }))}} 
-              dividendData={dividendData}
-              earningsData={earningsData}
-            />
-          )}
+        <div className="text-red-500 mb-4">
+          {error}
         </div>
       )}
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Symbol</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead className="text-right">Price</TableHead>
-            <TableHead className="text-right">Change</TableHead>
-            <TableHead className="text-right">Volume</TableHead>
-            <TableHead className="text-right">Market Cap</TableHead>
-            <TableHead></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {stockPrices.map((stock) => {
-            console.log('Rendering stock row:', stock);
-            return (
-              <TableRow 
-                key={stock.symbol}
-                className={cn(
-                  'cursor-pointer hover:bg-gray-50',
-                  selectedStock === stock.symbol && 'bg-blue-50 hover:bg-blue-100'
-                )}
-                onClick={() => handleStockSelect(stock.symbol)}
-              >
-                <TableCell className="font-medium">{stock.symbol}</TableCell>
-                <TableCell>{stock.shortName || stock.longName || stock.symbol}</TableCell>
-                <TableCell className="text-right">
-                  ${typeof stock.price === 'number' ? stock.price.toFixed(2) : 'N/A'}
-                </TableCell>
-                <TableCell className={cn(
-                  'text-right',
-                  stock.change > 0 ? 'text-green-600' : stock.change < 0 ? 'text-red-600' : ''
-                )}>
-                  {stock.change > 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)
-                </TableCell>
-                <TableCell className="text-right">
-                  {stock.volume ? formatNumber(stock.volume) : '-'}
-                </TableCell>
-                <TableCell className="text-right">
-                  {stock.marketCap ? formatMarketCap(stock.marketCap) : '-'}
-                </TableCell>
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveStock(stock.symbol);
-                    }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+      <div className="grid grid-cols-1 gap-4">
+        {stockPrices.map((stock) => {
+          console.log('Rendering stock card:', stock);
+          return (
+            <CollapsibleCard
+              key={stock.symbol}
+              title={
+                <div className="flex justify-between items-center w-full">
+                  <div>
+                    <span className="font-bold">{stock.symbol}</span>
+                    {stock.shortName && (
+                      <span className="text-gray-500 ml-2">({stock.shortName})</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="font-bold">
+                      ${typeof stock.price === 'number' ? stock.price.toFixed(2) : 'N/A'}
+                    </span>
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        stock.changePercent > 0 ? "text-green-500" : "text-red-500"
+                      )}
+                    >
+                      {stock.changePercent > 0 ? "+" : ""}
+                      {typeof stock.changePercent === 'number' ? stock.changePercent.toFixed(2) : '0.00'}%
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveStock(stock.symbol);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              }
+            >
+              {selectedStock === stock.symbol && stockHistory.length > 0 && (
+                <StockChart
+                  symbol={stock.symbol}
+                  data={stockHistory}
+                  dividendData={dividendData}
+                  earningsData={earningsData}
+                />
+              )}
+            </CollapsibleCard>
+          );
+        })}
+      </div>
 
       <CollapsibleCard title="Market News">
         <div className="space-y-4">
