@@ -1,0 +1,228 @@
+Project overview: 
+Project overview:
+This is a Next.js 14 application that serves as an AI chat interface with the following key features:
+
+Core Technologies:
+- Next.js 14 with App Router
+- TypeScript
+- Tailwind CSS for styling
+- Clerk for authentication
+- Prisma as ORM
+- PostgreSQL database
+- Vercel AI SDK
+- OpenAI integration
+
+Key Components:
+1. Authentication:
+   - Implemented using Clerk
+   - Protected routes and API endpoints
+   - User management and sessions
+
+2. Database Structure:
+   - Users (managed by Clerk)
+   - Chats (stores chat sessions)
+   - Messages (stores individual messages)
+
+3. Main Features:
+   - Chat interface with AI
+   - Chat history persistence
+   - Real-time streaming responses
+   - Message threading
+   - Code syntax highlighting
+   - Markdown support
+
+4. Project Structure:
+   - /app - Main application routes
+   - /components - Reusable UI components
+   - /lib - Utility functions and configurations
+   - /prisma - Database schema and migrations
+
+5. API Routes:
+   - /api/chat - Handles chat completions
+   - /api/chat/[chatId] - Manages specific chat sessions
+
+6. Key Components:
+   - ChatInterface - Main chat UI
+   - MessageList - Displays chat messages
+   - MessageInput - Handles user input
+   - CodeBlock - Renders code with syntax highlighting
+
+Development Rules:
+1. Always use TypeScript for type safety
+2. Follow Next.js 14 best practices and conventions
+3. Implement proper error handling and loading states
+4. Maintain responsive design principles
+5. Use Tailwind CSS for styling
+6. Keep components modular and reusable
+7. Use server components where possible
+8. Implement proper data validation
+9. Use python for backend and for tool calling with the llm
+
+------
+Rules for the stock market simulation UI
+1. Allow the llm to search the web using playwright scraper for stock market data and use the data to make predictions and to make trades. 
+2. Let the bot schedule trades in the future and allow it to make trades at a specific time and specific price targets. That way the bot can be more flexible and we can test its prediction performance. 
+3. Give the bot a portfolio of 1000$ dollars and allow it to buy and sell stocks with the data it finds and restrict the trades to normal stock market hours. 
+4. Put the trades into a SQLite database for retrieval. 
+5. Take the data collected and summarized by the bot at the end of the day and put it into the SQLite database to also be stored into a vector database like ChromaDB. 
+6. Let the bot make trades on crypto and forex markets as well. 
+
+--------
+Rules for the Stock Analysis Rating UI
+// ... existing code ...
+
+--------
+Rules for the Stock Analysis Rating UI
+
+1. Fundamental Score Components (40% of total rating):
+   - Financial Health Metrics:
+     * Debt-to-Equity Ratio
+     * Current Ratio
+     * Quick Ratio
+     * Interest Coverage Ratio
+   - Profitability Metrics:
+     * ROE (Return on Equity)
+     * ROA (Return on Assets)
+     * Operating Margins
+     * Net Profit Margins
+   - Growth Metrics:
+     * Revenue Growth Rate
+     * Earnings Growth Rate
+     * Free Cash Flow Growth
+     * Dividend Growth (if applicable)
+
+2. Technical Analysis Score (25% of total rating):
+   - Moving Averages (Multiple timeframes)
+   - RSI (Relative Strength Index)
+   - MACD (Moving Average Convergence Divergence)
+   - Volume Analysis
+   - Price Momentum
+   - Support/Resistance Levels
+
+3. Market Position Score (20% of total rating):
+   - Market Share in Industry
+   - Competitive Advantage Assessment
+   - Industry Growth Rate
+   - Market Cap vs. Industry Average
+   - Brand Value and Recognition
+   - Patents and Intellectual Property
+
+4. Risk Assessment Score (15% of total rating):
+   - Beta Value
+   - Volatility Metrics
+   - Geographic Risk
+   - Industry Risk
+   - Management Risk
+   - Regulatory Risk
+
+Calculation Method:
+1. Each component gets a score from 0-100
+2. Apply weighted averages based on importance
+3. Final Rating Formula:
+   - Final Score = (Fundamental Score × 0.4) + (Technical Score × 0.25) + 
+                  (Market Position × 0.2) + (Risk Assessment × 0.15)
+
+Rating Scale:
+- 90-100: Exceptional (5 stars)
+- 80-89: Strong Buy (4.5 stars)
+- 70-79: Buy (4 stars)
+- 60-69: Above Average (3.5 stars)
+- 50-59: Hold (3 stars)
+- 40-49: Below Average (2.5 stars)
+- 30-39: Underperform (2 stars)
+- 20-29: Sell (1.5 stars)
+- 0-19: Strong Sell (1 star)
+
+Implementation Guidelines:
+1. Use Python's numerical libraries (NumPy, Pandas) for calculations
+2. Implement moving time windows for trend analysis
+3. Use machine learning models to adjust weights dynamically
+4. Include anomaly detection for unusual market conditions
+5. Build in sentiment analysis from news and social media
+6. Create visualization components for each score category
+7. Include peer comparison within same industry
+8. Generate automated reports with detailed breakdowns
+9. Update ratings daily with new market data
+10. Store historical rating changes for trend analysis
+
+Data Sources to Consider:
+1. Financial Statements (SEC filings)
+2. Market Data APIs
+3. News APIs
+4. Social Media Sentiment
+5. Industry Reports
+6. Analyst Recommendations
+7. Patent Databases
+8. Economic Indicators
+
+--------
+
+# Template for technical indicator rules
+
+# 1. Define the base statistics we want to fetch from yfinance
+TECHNICAL_INDICATORS = {
+    "basic_stats": [
+        "marketCap",
+        "peRatio",
+        "forwardPE",
+        "priceToBook",
+        "trailingEps",
+        "volume",
+    ],
+    
+    "technical_indicators": [
+        "MACD",
+        "RSI",
+        "SMA_50",
+        "SMA_200",
+        "Bollinger_Bands",
+        "Volume_MA",
+    ]
+}
+
+# 2. Template for checkbox UI elements
+CHECKBOX_TEMPLATE = """
+<div class="indicator-controls">
+    {%- for indicator in technical_indicators %}
+    <label>
+        <input type="checkbox" name="{{ indicator }}" value="{{ indicator }}">
+        {{ indicator }}
+    </label>
+    {%- endfor %}
+</div>
+"""
+
+# 3. Example cursor rule template for fetching data
+"""
+<get_technical_data>:
+Input: Fetch technical indicators for {symbol} including {indicators}
+Steps:
+1. Import required libraries (yfinance, ta)
+2. Download historical data for the symbol
+3. Calculate requested technical indicators
+4. Format data for display
+5. Return JSON response with indicator values
+
+Example usage:
+- Get MACD: Calculate 12-day and 26-day EMAs and their difference
+- Get RSI: Calculate 14-period RSI
+- Get Moving Averages: Calculate specified period SMAs
+"""
+
+# 4. Template for display rules
+"""
+<display_indicators>:
+Input: Display selected indicators {selected_indicators} below chart for {symbol}
+Steps:
+1. Create subplot grid based on number of selected indicators
+2. Plot main price chart
+3. Plot each selected indicator in separate subplot
+4. Add interactive toggles for each indicator
+5. Update layout and styling
+
+Customization options:
+- Color schemes
+- Line styles
+- Time periods
+- Overlay vs separate plots
+"""

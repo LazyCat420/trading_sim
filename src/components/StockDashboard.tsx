@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CollapsibleCard } from "@/components/ui/collapsible-card"
 import StockChart from './StockChart'
+import TradingBot from './TradingBot'
 
 interface StockData {
   symbol: string
@@ -63,6 +64,7 @@ export default function StockDashboard() {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
   const [stockHistory, setStockHistory] = useState<StockHistoryResponse>({ data: [] })
+  const [stockData, setStockData] = useState<StockData | null>(null)
 
   const fetchNews = async (symbols: string[]) => {
     if (symbols.length === 0) {
@@ -124,22 +126,36 @@ export default function StockDashboard() {
     }
   }
 
-  const fetchStockPrice = async (symbol: string): Promise<StockData | null> => {
+  const fetchStockData = async (symbol: string) => {
+    setIsLoading(true);
+    setError(null);
+    
     try {
-      const response = await fetch(`/stock/${symbol}`)
-      const data = await response.json()
-      
-      if (data.error) {
-        setError(data.error)
-        return null
+      const response = await fetch(`/api/stock/${symbol}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch stock data');
       }
       
-      return data
-    } catch (error) {
-      setError('Failed to fetch stock price')
-      return null
+      const data = await response.json();
+      
+      // Validate the data before setting it
+      if (!data || typeof data.currentPrice !== 'number') {
+        throw new Error('Invalid stock data received');
+      }
+      
+      setStockData({
+        symbol: data.symbol,
+        currentPrice: data.currentPrice,
+        change: data.change || 0,
+        // ... other properties
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setStockData(null);
+    } finally {
+      setIsLoading(false);
     }
-  }
+  };
 
   const fetchStockHistory = async (symbol: string) => {
     try {
@@ -176,7 +192,7 @@ export default function StockDashboard() {
     setError(null)
     
     try {
-      const data = await fetchStockPrice(searchSymbol.toUpperCase())
+      const data = await fetchStockData(searchSymbol.toUpperCase())
       if (data) {
         setStocks(prev => [...prev, data])
         // Select the newly added stock
@@ -198,7 +214,7 @@ export default function StockDashboard() {
     
     try {
       const updatedStocks = await Promise.all(
-        stocks.map(stock => fetchStockPrice(stock.symbol))
+        stocks.map(stock => fetchStockData(stock.symbol))
       )
       
       setStocks(updatedStocks.filter((stock): stock is StockData => stock !== null))
@@ -235,6 +251,12 @@ export default function StockDashboard() {
 
   return (
     <div className="p-4 space-y-4">
+      {/* Trading Bot Section */}
+      <div className="mb-8">
+        <TradingBot />
+      </div>
+
+      {/* Existing Stock Search Section */}
       <div className="flex gap-2">
         <Input
           placeholder="Enter stock symbol..."
@@ -250,116 +272,124 @@ export default function StockDashboard() {
           {isLoading ? 'Adding...' : 'Add Stock'}
         </Button>
         <Button
-          variant="outline"
           onClick={handleRefreshAll}
           disabled={isLoading || stocks.length === 0}
+          variant="outline"
         >
           Refresh All
         </Button>
       </div>
 
+      {/* Error Display */}
       {error && (
-        <div className="text-red-500 bg-red-50 p-2 rounded">{error}</div>
+        <div className="text-red-500 text-sm">
+          {error}
+        </div>
       )}
 
-      {selectedStock && (
-        <StockChart symbol={selectedStock} data={stockHistory} />
-      )}
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead key="symbol">Symbol</TableHead>
-            <TableHead key="name">Name</TableHead>
-            <TableHead key="price">Price</TableHead>
-            <TableHead key="change">Change</TableHead>
-            <TableHead key="volume">Volume</TableHead>
-            <TableHead key="marketCap">Market Cap</TableHead>
-            <TableHead key="peRatio">P/E Ratio</TableHead>
-            <TableHead key="52w">52W High/Low</TableHead>
-            <TableHead key="rating">Analyst Rating</TableHead>
-            <TableHead key="actions">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {stocks.map((stock) => (
-            <TableRow 
-              key={stock.symbol}
-              className={`cursor-pointer hover:bg-gray-50 ${selectedStock === stock.symbol ? 'bg-blue-50' : ''}`}
-              onClick={() => handleStockSelect(stock.symbol)}
-            >
-              <TableCell>{stock.symbol}</TableCell>
-              <TableCell>{stock.shortName || stock.longName || 'N/A'}</TableCell>
-              <TableCell>${(stock.currentPrice || 0).toFixed(2)}</TableCell>
-              <TableCell className={stock.change >= 0 ? 'text-green-500' : 'text-red-500'}>
-                {(stock.change || 0).toFixed(2)} ({(stock.changePercent || 0).toFixed(2)}%)
-              </TableCell>
-              <TableCell>{(stock.volume || 0).toLocaleString()}</TableCell>
-              <TableCell>
-                {typeof stock.marketCap === 'number' ? 
-                  `$${(stock.marketCap / 1e9).toFixed(2)}B` : 
-                  'N/A'}
-              </TableCell>
-              <TableCell>{stock.peRatio?.toFixed(2) || 'N/A'}</TableCell>
-              <TableCell>
-                ${stock.fiftyTwoWeekHigh?.toFixed(2) || 'N/A'} / 
-                ${stock.fiftyTwoWeekLow?.toFixed(2) || 'N/A'}
-              </TableCell>
-              <TableCell>
-                {stock.analystRating ? 
-                  `${stock.analystRating.firm}: ${stock.analystRating.grade}` : 
-                  'N/A'}
-              </TableCell>
-              <TableCell>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleRemoveStock(stock.symbol)
-                  }}
+      {/* Stock List and Details */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Watchlist */}
+        <CollapsibleCard title="Watchlist">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Symbol</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Change</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {stocks.map((stock) => (
+                <TableRow 
+                  key={stock.symbol}
+                  className={selectedStock === stock.symbol ? 'bg-secondary' : ''}
                 >
-                  Remove
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                  <TableCell>
+                    <button
+                      onClick={() => handleStockSelect(stock.symbol)}
+                      className="text-left font-medium hover:underline"
+                    >
+                      {stock.symbol}
+                    </button>
+                  </TableCell>
+                  <TableCell>
+                    ${stock?.currentPrice ? stock.currentPrice.toFixed(2) : 'N/A'}
+                  </TableCell>
+                  <TableCell 
+                    className={stock?.change >= 0 ? 'text-green-500' : 'text-red-500'}
+                  >
+                    {stock?.change != null ? (
+                      `${stock.change >= 0 ? '+' : ''}${stock.change.toFixed(2)}%`
+                    ) : 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      onClick={() => handleRemoveStock(stock.symbol)}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      Remove
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CollapsibleCard>
 
+        {/* Stock Details */}
+        {selectedStock && (
+          <CollapsibleCard title={`${selectedStock} Details`}>
+            <div className="space-y-4">
+              {/* Stock Chart */}
+              <div className="h-64">
+                <StockChart symbol={selectedStock} data={stockHistory} />
+              </div>
+
+              {/* Stock Info */}
+              {stocks.find(s => s.symbol === selectedStock) && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Market Cap</Label>
+                    <div>{stocks.find(s => s.symbol === selectedStock)?.marketCap}</div>
+                  </div>
+                  <div>
+                    <Label>Volume</Label>
+                    <div>{stocks.find(s => s.symbol === selectedStock)?.volume.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <Label>P/E Ratio</Label>
+                    <div>{stocks.find(s => s.symbol === selectedStock)?.peRatio?.toFixed(2) || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <Label>Dividend Yield</Label>
+                    <div>{stocks.find(s => s.symbol === selectedStock)?.dividendYield?.toFixed(2)}%</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsibleCard>
+        )}
+      </div>
+
+      {/* News Section */}
       <CollapsibleCard title="Market News">
         <div className="space-y-4">
-          {isLoading ? (
-            <p className="text-gray-500">Loading news...</p>
-          ) : news && news.length > 0 ? (
-            news.map((item, index) => (
-              <div key={index} className="border-b pb-4 flex gap-4">
-                {item.image_url && (
-                  <div className="flex-shrink-0">
-                    <img 
-                      src={item.image_url} 
-                      alt={item.title} 
-                      className="w-32 h-24 object-cover rounded"
-                    />
-                  </div>
-                )}
-                <div className="flex-grow">
-                  <h3 className="font-semibold">
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-500">
-                      {item.title}
-                    </a>
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {item.symbol && <span className="font-medium">{item.symbol} - </span>}
-                    {new Date(item.time_published).toLocaleString()} - {item.source}
-                  </p>
-                  <p className="mt-2">{item.summary}</p>
-                </div>
+          {news.map((item, index) => (
+            <div key={index} className="p-4 border rounded-lg">
+              <h3 className="font-medium mb-2">
+                <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                  {item.title}
+                </a>
+              </h3>
+              <p className="text-sm text-gray-600 mb-2">{item.summary}</p>
+              <div className="text-xs text-gray-500">
+                {new Date(item.time_published).toLocaleString()} - {item.source}
               </div>
-            ))
-          ) : (
-            <p className="text-gray-500">No market news available</p>
-          )}
+            </div>
+          ))}
         </div>
       </CollapsibleCard>
     </div>
