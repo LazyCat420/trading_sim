@@ -1,3 +1,5 @@
+# 🚧 UNDER CONSTRUCTION 🚧
+
 # Trading Simulator
 
 A web application for simulating stock trading with real-time data using yfinance.
