@@ -660,6 +660,7 @@ export default function StockDashboard() {
           return (
             <CollapsibleCard
               key={stock.symbol}
+              defaultExpanded={selectedStock === stock.symbol}
               title={
                 <div className="flex justify-between items-center w-full">
                   <div>
@@ -694,6 +695,11 @@ export default function StockDashboard() {
                   </div>
                 </div>
               }
+              onExpand={() => {
+                if (selectedStock !== stock.symbol) {
+                  handleStockSelect(stock.symbol);
+                }
+              }}
             >
               {selectedStock === stock.symbol && stockHistory.length > 0 && (
                 <StockChart

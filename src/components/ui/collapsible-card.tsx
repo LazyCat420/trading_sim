@@ -9,21 +9,31 @@ interface CollapsibleCardProps {
   children: React.ReactNode
   className?: string
   defaultExpanded?: boolean
+  onExpand?: () => void
 }
 
 export function CollapsibleCard({ 
   title, 
   children, 
   className,
-  defaultExpanded = false 
+  defaultExpanded = false,
+  onExpand 
 }: CollapsibleCardProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
+
+  const handleExpand = () => {
+    const newExpanded = !isExpanded;
+    setIsExpanded(newExpanded);
+    if (newExpanded && onExpand) {
+      onExpand();
+    }
+  };
 
   return (
     <Card className={className}>
       <CardHeader 
         className="flex flex-row items-center justify-between space-y-0 p-4 cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={handleExpand}
       >
         {title}
         <Button
@@ -31,7 +41,7 @@ export function CollapsibleCard({
           size="icon"
           onClick={(e) => {
             e.stopPropagation();
-            setIsExpanded(!isExpanded);
+            handleExpand();
           }}
           className="h-8 w-8"
         >
