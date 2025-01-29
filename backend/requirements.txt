@@ -2,7 +2,7 @@ fastapi==0.109.0
 uvicorn==0.27.0
 yfinance==0.2.35
 python-dotenv==1.0.0
-requests==2.31.0
+requests>=2.32.0
 pandas==2.2.0
 aiohttp
 langchain-community 

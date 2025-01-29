@@ -224,7 +224,8 @@ def get_user_watchlist(user_id: int):
         
         # Get the watchlist with stock details
         cursor.execute('''
-            SELECT DISTINCT s.symbol, s.name, s.last_price, s.last_updated
+            SELECT DISTINCT s.symbol, s.name, s.last_price, 
+                   datetime(s.last_updated) as last_updated
             FROM watchlist w
             JOIN stocks s ON w.stock_id = s.id
             WHERE w.user_id = ?

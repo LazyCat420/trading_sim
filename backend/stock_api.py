@@ -640,17 +640,24 @@ async def get_user_watchlist(user_id: int) -> List[WatchlistResponse]:
         logger.info(f"Getting watchlist for user {user_id}")
         watchlist = db.get_user_watchlist(user_id)
         logger.info(f"Found {len(watchlist)} items in watchlist")
-        return [
-            WatchlistResponse(
+        
+        result = []
+        for item in watchlist:
+            logger.debug(f"Processing watchlist item: {item}")
+            logger.debug(f"last_updated type: {type(item['last_updated'])}, value: {item['last_updated']}")
+            
+            response = WatchlistResponse(
                 symbol=item["symbol"],
                 name=item["name"],
                 last_price=item["last_price"],
-                last_updated=item["last_updated"].isoformat() if item["last_updated"] else None
+                last_updated=item["last_updated"]  # SQLite datetime string is already in ISO format
             )
-            for item in watchlist
-        ]
+            result.append(response)
+            
+        return result
     except Exception as e:
         logger.error(f"Error getting watchlist: {str(e)}")
+        logger.exception("Full traceback:")  # This will log the full stack trace
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/watchlist/{user_id}/clear")
