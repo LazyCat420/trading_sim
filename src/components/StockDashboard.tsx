@@ -276,7 +276,7 @@ export default function StockDashboard() {
   const fetchStockHistory = async (symbol: string) => {
     try {
       console.log('Fetching history for symbol:', symbol);
-      const response = await fetch(`/api/stock/history?symbol=${symbol}`);
+      const response = await fetch(`/api/stock/history/${symbol}`);
       console.log('History response status:', response.status);
       
       if (!response.ok) {
@@ -298,18 +298,40 @@ export default function StockDashboard() {
     try {
       console.log('fetchStockDetails - Starting fetch for symbol:', symbol);
       
+      // Fetch history data
       console.log('fetchStockDetails - Fetching history data...');
-      const historyResponse = await fetch(`/api/stock/history?symbol=${symbol}`);
+      const historyUrl = `/api/stock/history/${symbol}`;
+      console.log('fetchStockDetails - History URL:', historyUrl);
+      const historyResponse = await fetch(historyUrl);
       console.log('fetchStockDetails - History response status:', historyResponse.status);
-      const historyData = await historyResponse.json();
-      console.log('fetchStockDetails - Raw history data:', historyData);
+      console.log('fetchStockDetails - History response headers:', Object.fromEntries(historyResponse.headers.entries()));
+      
+      if (!historyResponse.ok) {
+        const errorText = await historyResponse.text();
+        console.error('fetchStockDetails - History error response:', errorText);
+        throw new Error(`Failed to fetch history data: ${historyResponse.statusText}`);
+      }
 
+      const historyText = await historyResponse.text();
+      console.log('fetchStockDetails - Raw history response:', historyText);
+      
+      let historyData;
+      try {
+        historyData = JSON.parse(historyText);
+        console.log('fetchStockDetails - Parsed history data:', historyData);
+      } catch (parseError) {
+        console.error('fetchStockDetails - Failed to parse history JSON:', parseError);
+        throw new Error('Invalid history data format');
+      }
+
+      // Fetch dividend data
       console.log('fetchStockDetails - Fetching dividend data...');
       const dividendResponse = await fetch(`/api/stock/dividends?symbol=${symbol}`);
       console.log('fetchStockDetails - Dividend response status:', dividendResponse.status);
       const dividendData = await dividendResponse.json();
       console.log('fetchStockDetails - Raw dividend data:', dividendData);
 
+      // Fetch earnings data
       console.log('fetchStockDetails - Fetching earnings data...');
       const earningsResponse = await fetch(`/api/stock/earnings?symbol=${symbol}`);
       console.log('fetchStockDetails - Earnings response status:', earningsResponse.status);
