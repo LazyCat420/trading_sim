@@ -43,3 +43,45 @@ venv/
 node_modules
 backend/stocks.db
 package-lock.json
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Sensitive configuration files
+config/secrets.yml
+config/database.yml
+
+# SSH keys and certificates
+*.key
+*.crt
+*.csr
+
+# AWS Credentials
+.aws/credentials
+.aws/config
+
+# Google Cloud Credentials
+credentials.json
+
+# Other secret files
+*.secret
+*.env.*
+
+# IDE and editor settings (if not already included)
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files (if not already included)
+Thumbs.db
+
+# Log files
+*.log
+
+# Temporary files
+tmp/
+temp/
