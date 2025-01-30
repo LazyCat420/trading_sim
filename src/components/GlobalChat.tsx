@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useCallback } from 'react'
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,10 +18,11 @@ interface Message {
 }
 
 export function GlobalChat() {
-  const { messages, addMessage, isProcessing, setIsProcessing } = useChat()
+  const { messages, addMessage, updateMessage, isProcessing, setIsProcessing } = useChat()
   const [input, setInput] = useState('')
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [currentResponse, setCurrentResponse] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,10 +32,16 @@ export function GlobalChat() {
       console.log('🔍 DEBUG: Sending message:', input)
       
       // Add user message
-      const messageId = Date.now().toString()
-      addMessage('user', input, { id: messageId })
+      const userMessageId = Date.now().toString()
+      addMessage('user', input, { id: userMessageId })
+      
+      // Add initial bot message
+      const botMessageId = (Date.now() + 1).toString()
+      addMessage('bot', '', { id: botMessageId })
+      
       setInput('')
       setIsProcessing(true)
+      setCurrentResponse('')
 
       // Send to backend for processing
       const response = await fetch('/api/trading/chat', {
@@ -55,16 +62,40 @@ export function GlobalChat() {
         throw new Error('Failed to get response')
       }
 
-      const data = await response.json()
-      console.log('🔍 DEBUG: Response data:', data)
+      // Handle streaming response
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No reader available')
 
-      if (data.error) {
-        throw new Error(data.error)
+      let fullResponse = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        // Decode and process chunks
+        const chunk = new TextDecoder().decode(value)
+        const lines = chunk.split('\n').filter(line => line.trim())
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line)
+            console.log('✅ DEBUG: Received chunk:', data)
+
+            if (data.choices?.[0]?.delta?.content) {
+              const content = data.choices[0].delta.content
+              fullResponse += content
+              setCurrentResponse(fullResponse)
+
+              // Update the existing bot message
+              updateMessage(botMessageId, fullResponse)
+              scrollToBottom()
+            }
+          } catch (error) {
+            console.error('❌ DEBUG: Error parsing chunk:', error)
+          }
+        }
       }
 
-      // Add bot response
-      const responseId = Date.now().toString()
-      addMessage('bot', data.choices[0].message.content, { id: responseId })
       scrollToBottom()
 
     } catch (error) {
@@ -72,6 +103,7 @@ export function GlobalChat() {
       addMessage('system', 'Sorry, I encountered an error processing your request.', { id: Date.now().toString() })
     } finally {
       setIsProcessing(false)
+      setCurrentResponse('')
       scrollToBottom()
     }
   }
@@ -140,7 +172,7 @@ export function GlobalChat() {
                     </span>
                   </div>
                 ))}
-                {isProcessing && (
+                {isProcessing && !currentResponse && (
                   <div className="flex justify-center">
                     <span className="animate-pulse">Thinking...</span>
                   </div>

@@ -13,6 +13,7 @@ interface Message {
 interface ChatContextType {
   messages: Message[]
   addMessage: (type: Message['type'], content: string, metadata?: any) => void
+  updateMessage: (id: string, content: string) => void
   clearMessages: () => void
   isProcessing: boolean
   setIsProcessing: (value: boolean) => void
@@ -31,13 +32,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const addMessage = (type: Message['type'], content: string, metadata?: any) => {
     const newMessage: Message = {
-      id: Date.now().toString(),
+      id: metadata?.id || Date.now().toString(),
       type,
       content,
       timestamp: new Date(),
       metadata
     }
     setMessages(prev => [...prev, newMessage])
+  }
+
+  const updateMessage = (id: string, content: string) => {
+    setMessages(prev => prev.map(message => 
+      message.metadata?.id === id ? { ...message, content } : message
+    ))
   }
 
   const clearMessages = () => {
@@ -49,7 +56,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     <ChatContext.Provider 
       value={{ 
         messages, 
-        addMessage, 
+        addMessage,
+        updateMessage,
         clearMessages,
         isProcessing,
         setIsProcessing
