@@ -1,0 +1,189 @@
+Trading Bot Rules:
+
+# Core Architecture
+1. System Foundation:
+   - Local LLM Orchestrator: Ollama with llama3.2:latest model
+   - Tool Calling Framework: Custom implementation using LangChain's new tools standard
+
+# Strategy Switching Mechanism
+2. Investment Philosophy Matrix:
+   - Value Investing (Graham/Buffett):
+     • Parameters: P/E < 15, P/B < 1.5, D/E < 0.3
+     • Holding Period: 3-5 year minimum
+   - Growth Hunting (Lynch):
+     • Parameters: EPS Growth > 25%, ROE > 15%
+     • Sector Focus: Consumer cyclical/Technology
+   - Quantitative Edge (Simons):
+     • Statistical Arbitrage thresholds
+     • Hidden Markov Models for regime detection
+
+# Algorithm Stack
+3. Hybrid Analysis Engines:
+   - Fundamental Analysis:
+     • Custom DCF model with Monte Carlo simulations
+     • Sentiment parsing of earnings calls (whisper.cpp local transcribe)
+   - Technical Synthesis:
+     • Fractal Adaptive Moving Averages (FRAMA)
+     • Volume-Weighted MACD variant
+   - Machine Learning Layer:
+     • LSTM price prediction (PyTorch)
+     • SHAP values for feature importance
+
+# Tool Calling Integration
+4. Local LLM Tool Registry:
+   - Data Tools:
+     • live_market_scan(sectors, filters)
+     • historical_pattern_match(ticker, years)
+     • options_chain_analysis(ticker, expiration)
+   - Scraping Tools:
+     • sec_filings_scraper(ticker, filing_type) - Playwright-based
+     • news_sentiment_scraper(query) - Using BeautifulSoup/Playwright
+     • social_media_scraper(ticker) - Reddit/Twitter via Scrapy
+     • ecommerce_scraper(product_keywords) - Playwright headless browser
+   - Analysis Tools:
+     • calculate_enterprise_value(ticker)
+     • run_scenario_analysis(model_params)
+     • crypto_onchain_analysis(wallet_address)
+   - Execution Tools:
+     • execute_pair_trade(long_ticker, short_ticker)
+     • adjust_portfolio_hedge(risk_level)
+     • dark_pool_order(routing_strategy)
+   - Decision Tools:
+     • news_analysis_workflow(ticker) -> Analysis:
+       1. Call news_sentiment_scraper()
+       2. Run sentiment_analysis()
+       3. Generate trade_plan()
+     • technical_trigger_engine(conditions) -> Triggers
+     • fundamental_revaluation_check() -> Alert
+   - Scheduling Tools:
+     • create_price_alert(ticker, target_price)
+     • schedule_limit_order(ticker, price, quantity)
+     • set_stop_loss(ticker, trigger_price)
+     • pattern_recognition_watchlist(symbols)
+
+# Risk Management
+5. Capital Preservation Rules:
+   - Position Sizing:
+     • Kelly Criterion implementation
+     • Dynamic correlation adjustment
+   - Circuit Breakers:
+     • Volatility shutdown (VIX > 35)
+     • Drawdown limits (-7% daily/-15% weekly)
+   - Black Swan Protection:
+     • Tail risk hedging with VIX options
+     • Bitcoin correlation breaker
+
+# Adaptive Learning
+6. Feedback Mechanisms:
+   - Post-Trade Analysis:
+     • Win/loss attribution reporting
+     • Strategy drift detection
+   - Model Retraining:
+     • Weekly fundamental model updates
+     • Daily technical pattern recalibration
+     • Monthly regime classification refresh
+
+# Data Infrastructure
+7. Pipeline Architecture:
+   - Scraping Framework:
+     • Playwright cluster for parallel scraping
+     • Rotating residential proxies (BrightData/Oxylabs)
+     • CAPTCHA solving integration
+   - Data Processing:
+     • Pandas 2.0 with Arrow backend
+     • dbt for data transformation
+     • Great Expectations for validation
+   - Storage:
+     • Parquet for fundamental data
+     • TimescaleDB for time-series
+     • Neo4j for market relationships
+
+# State Management
+8. Event-Driven Architecture:
+   - Trigger Engine:
+     • Price-based triggers (support for technical levels)
+     • News sentiment thresholds
+     • Volume spike detector
+     • Correlation break alerts
+   - Task Scheduler:
+     • Celery for distributed task queue
+     • Redis for state persistence
+     • Circuit breaker pattern implementation
+
+# Required Stack
+- Scraping: Playwright, Scrapy, BeautifulSoup4
+- Data: Pandas 2.0, PyArrow, DuckDB
+- Async: AnyIO, HTTPX
+- ML: Sklearn, XGBoost, LightGBM
+- APIs: FastAPI for internal tool calling interface
+- Scheduling: Celery + Redis
+- State Storage: SQLModel + RedisJSON
+- Event Monitoring: Websockets + Apache Kafka
+
+@tool
+def news_analysis_workflow(ticker: str) -> dict:
+    """Orchestrates news analysis pipeline"""
+    articles = news_sentiment_scraper(ticker)
+    analysis = sentiment_analysis(articles)
+    return generate_trade_plan(
+        ticker=ticker,
+        sentiment_score=analysis['score'],
+        confidence=analysis['confidence']
+    )
+
+class TriggerManager:
+    def __init__(self):
+        self.active_triggers = {}
+        
+    def add_trigger(self, condition_type: str, params: dict):
+        trigger_id = uuid4()
+        self.active_triggers[trigger_id] = {
+            'condition': condition_type,
+            'params': params,
+            'status': 'armed'
+        }
+        return trigger_id
+
+class PaperTradingEngine:
+    def __init__(self, initial_balance=10000):
+        self.initial_balance = initial_balance
+        self.portfolio = defaultdict(float)
+        self.cash = initial_balance
+        self.order_history = []
+        
+    def set_initial_balance(self, new_balance):
+        """UI-facing method to adjust starting capital"""
+        self.initial_balance = new_balance
+        self.reset_portfolio()
+        
+    def reset_portfolio(self):
+        """Reset to initial configuration"""
+        self.portfolio.clear()
+        self.cash = self.initial_balance
+        self.order_history = []
+
+    def execute_mock_order(self, order_type: str, ticker: str, 
+                         quantity: float, price: float):
+        # Simulates order execution with random slippage
+        executed_price = price * (1 + np.random.uniform(-0.0005, 0.0005))
+        cost = executed_price * quantity
+        
+        if order_type == 'buy' and self.cash >= cost:
+            self.portfolio[ticker] += quantity
+            self.cash -= cost
+        elif order_type == 'sell':
+            self.portfolio[ticker] -= quantity
+            self.cash += cost
+            
+        self.order_history.append({
+            'timestamp': datetime.now(),
+            'ticker': ticker,
+            'type': order_type,
+            'quantity': quantity,
+            'price': executed_price
+        })
+
+# Example UI control flow
+engine = PaperTradingEngine()
+engine.set_initial_balance(15000)  # User changes via UI
+engine.reset_portfolio()  # Reset to new balance
