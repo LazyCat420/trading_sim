@@ -9,6 +9,7 @@ interface Message {
     url: string
     title?: string
     image?: string
+    citation?: number
   }[]
 }
 
@@ -24,7 +25,6 @@ export default function AiChat() {
 
     try {
       setIsLoading(true)
-      console.log('🟦 Client - User input:', input)
       setMessages(prev => [...prev, { type: 'user', message: input }])
 
       const isSearchRequest = input.trim().toLowerCase().startsWith('search')
@@ -57,8 +57,6 @@ export default function AiChat() {
           stream: true
         }
       }
-      
-      console.log('🟦 Client - Request body:', requestBody)
 
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -67,8 +65,6 @@ export default function AiChat() {
         },
         body: JSON.stringify(requestBody)
       })
-
-      console.log('🟦 Client - Response status:', response.status)
 
       if (!response.ok) {
         throw new Error(`Request failed with status: ${response.status}`)
@@ -99,12 +95,8 @@ export default function AiChat() {
         if (done) break
 
         const chunk = new TextDecoder().decode(value)
-        console.log('🟦 Client - Raw chunk:', chunk)
-
         try {
           const data = JSON.parse(chunk)
-          console.log('🟦 Client - Parsed data:', data)
-          
           if (data.choices && data.choices[0]?.delta?.content) {
             const content = data.choices[0].delta.content
             fullResponse += content
@@ -118,7 +110,7 @@ export default function AiChat() {
             })
           }
         } catch (e) {
-          console.error('🟥 Client - Error parsing chunk:', e)
+          console.error('Error processing response chunk:', e)
         }
       }
 
@@ -134,7 +126,7 @@ export default function AiChat() {
       })
 
     } catch (error) {
-      console.error('🟥 Client - Error:', error)
+      console.error('Error:', error)
       setMessages(prev => [...prev, { 
         type: 'assistant', 
         message: 'Sorry, there was an error processing your request.' 
@@ -162,7 +154,7 @@ export default function AiChat() {
                   : 'message-assistant'
               }`}
             >
-              <MessageContent content={message.message || '...'} />
+              <MessageContent content={message.message || '...'} links={message.links} />
               {message.links && message.links.length > 0 && (
                 <div className="mt-3 space-y-2 border-t border-gray-200 pt-2">
                   {message.links.map((link, linkIndex) => (
@@ -184,12 +176,10 @@ export default function AiChat() {
                         }}
                       >
                         <span className="inline-flex items-center justify-center bg-opacity-20 rounded-full h-5 w-5 text-xs font-medium bg-current">
-                          {linkIndex + 1}
+                          {link.citation}
                         </span>
-                        <span className="flex-1 break-all">
-                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="link">
-                            {link.title || link.url}
-                          </a>
+                        <span className="flex-1 break-all cursor-pointer">
+                          {link.title || link.url}
                         </span>
                         <svg className="w-4 h-4 flex-shrink-0 opacity-75" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -259,31 +249,34 @@ export default function AiChat() {
   )
 }
 
-const MessageContent = ({ content }: { content: string }) => {
-  const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+const MessageContent = ({ content, links }: { content: string, links?: Message['links'] }) => {
+  const urlRegex = /\[(\d+)\]/g;
   const parts = content.split(urlRegex);
   
   return (
     <div className="whitespace-pre-wrap break-words">
       {parts.map((part, i) => {
-        if (part.match(urlRegex)) {
-          const cleanUrl = part.trim().replace(/[.,;]$/, '');
-          return (
-            <a
-              key={i}
-              href={cleanUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-500 hover:text-blue-700 underline"
-              onClick={(e) => {
-                e.preventDefault();
-                window.open(cleanUrl, '_blank', 'noopener,noreferrer');
-              }}
-            >
-              {cleanUrl}
-            </a>
-          );
+        // If it's a citation number (every odd index after split)
+        if (i % 2 === 1) {
+          const citationNumber = parseInt(part);
+          const link = links?.find(l => l.citation === citationNumber);
+          if (link) {
+            return (
+              <sup
+                key={i}
+                onClick={() => {
+                  if (link.url) {
+                    window.open(link.url, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+                className="text-blue-500 hover:text-blue-700 cursor-pointer ml-1"
+              >
+                [{citationNumber}]
+              </sup>
+            );
+          }
         }
+        // Regular text content
         return <span key={i}>{part}</span>;
       })}
     </div>
@@ -293,12 +286,20 @@ const MessageContent = ({ content }: { content: string }) => {
 const processMessageContent = (message: string) => {
   const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
   const urls = message.match(urlRegex) || [];
+  let processedMessage = message;
+  
+  // Replace URLs with citation numbers
+  urls.forEach((url, index) => {
+    const citationNumber = index + 1;
+    processedMessage = processedMessage.replace(url, `[${citationNumber}]`);
+  });
   
   return { 
-    processedMessage: message,
-    links: urls.map(url => ({ 
+    processedMessage,
+    links: urls.map((url, index) => ({ 
       url: url.trim().replace(/[.,;]$/, ''),
-      title: url.trim().replace(/[.,;]$/, '') 
+      title: url.trim().replace(/[.,;]$/, ''),
+      citation: index + 1
     }))
   };
 }; 
