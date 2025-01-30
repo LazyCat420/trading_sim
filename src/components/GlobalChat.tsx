@@ -1,13 +1,8 @@
 "use client"
 
-import React, { useRef, useState, useCallback } from 'react'
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useRef, useState, useEffect } from 'react'
 import { useChat } from '@/contexts/ChatContext'
-import { cn } from "@/lib/utils"
+import { FiSend, FiMinimize2, FiMaximize2 } from 'react-icons/fi'
 
 interface Message {
   id: string
@@ -17,12 +12,13 @@ interface Message {
   metadata?: any
 }
 
-export function GlobalChat() {
+export default function GlobalChat() {
   const { messages, addMessage, updateMessage, isProcessing, setIsProcessing } = useChat()
   const [input, setInput] = useState('')
-  const scrollAreaRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
   const [currentResponse, setCurrentResponse] = useState('')
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -109,119 +105,110 @@ export function GlobalChat() {
   }
 
   const scrollToBottom = () => {
-    if (scrollAreaRef.current) {
-      setTimeout(() => {
-        scrollAreaRef.current?.scrollTo({
-          top: scrollAreaRef.current.scrollHeight,
-          behavior: 'smooth'
-        })
-      }, 100)
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
     }
   }
 
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
   return (
-    <Card className="fixed bottom-4 right-4 w-96 h-[600px] shadow-lg">
-      <Tabs defaultValue="chat">
-        <div className="flex justify-between items-center p-2 border-b">
-          <TabsList>
-            <TabsTrigger value="chat">Chat</TabsTrigger>
-            <TabsTrigger value="updates">Bot Updates</TabsTrigger>
-          </TabsList>
-          <Button 
-            variant="ghost" 
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => inputRef.current?.focus()}
+    <div className={`fixed bottom-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg 
+      ${isCollapsed ? 'w-16 h-16' : 'w-[600px] h-[600px]'} 
+      transition-all duration-300 ease-in-out z-50`}>
+      
+      {/* Header */}
+      <div className="flex justify-between items-center p-4 border-b dark:border-gray-700">
+        {!isCollapsed && <h2 className="text-lg font-semibold">Trading Assistant</h2>}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
+        >
+          {isCollapsed ? <FiMaximize2 /> : <FiMinimize2 />}
+        </button>
+      </div>
+
+      {!isCollapsed && (
+        <>
+          {/* Messages */}
+          <div 
+            ref={chatContainerRef}
+            className="flex-1 overflow-y-auto p-4 space-y-4 h-[480px] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
           >
-            <span className="sr-only">Focus input</span>
-            📝
-          </Button>
-        </div>
-
-        <TabsContent value="chat" className="mt-0">
-          <CardContent className="p-0 flex flex-col h-[540px]">
-            <ScrollArea 
-              className="flex-1 p-4 border-b" 
-              ref={scrollAreaRef}
-            >
-              <div className="space-y-4">
-                {messages.map((message) => (
-                  <div
-                    key={message.metadata?.id || `${message.type}-${message.timestamp.getTime()}`}
-                    className={cn(
-                      "flex flex-col space-y-1",
-                      message.type === 'user' && "items-end",
-                      message.type === 'bot' && "items-start",
-                      message.type === 'system' && "items-center"
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "rounded-lg px-3 py-2 max-w-[80%] break-words",
-                        message.type === 'user' && "bg-primary text-primary-foreground",
-                        message.type === 'bot' && "bg-muted",
-                        message.type === 'system' && "bg-secondary text-secondary-foreground text-sm"
-                      )}
-                    >
-                      {message.type === 'bot' && '🤖 '}
-                      {message.type === 'system' && '🔧 '}
-                      {message.content}
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {message.timestamp.toLocaleTimeString()}
-                    </span>
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${
+                  message.type === 'user' ? 'justify-end' : 'justify-start'
+                }`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-lg p-3 ${
+                    message.type === 'user'
+                      ? 'bg-blue-500 text-white'
+                      : message.type === 'system'
+                      ? 'bg-yellow-100 dark:bg-yellow-900'
+                      : 'bg-gray-100 dark:bg-gray-700'
+                  }`}
+                >
+                  <div className="prose dark:prose-invert max-w-none">
+                    {message.content.split('\n').map((line, i) => {
+                      // Check if the line is a source link
+                      if (line.trim().startsWith('[') && line.includes(']')) {
+                        const matches = line.match(/\[(\d+)\]\s+(.+)/)
+                        if (matches) {
+                          const [_, number, url] = matches
+                          return (
+                            <p key={i} className="mb-1 last:mb-0">
+                              <a 
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 dark:text-blue-400 hover:underline"
+                              >
+                                [{number}] Source
+                              </a>
+                            </p>
+                          )
+                        }
+                      }
+                      return (
+                        <p key={i} className="mb-1 last:mb-0">
+                          {line}
+                        </p>
+                      )
+                    })}
                   </div>
-                ))}
-                {isProcessing && !currentResponse && (
-                  <div className="flex justify-center">
-                    <span className="animate-pulse">Thinking...</span>
-                  </div>
-                )}
+                </div>
               </div>
-            </ScrollArea>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
 
-            <form onSubmit={handleSubmit} className="p-4 flex gap-2">
-              <Input
-                ref={inputRef}
-                placeholder="Ask me about trading strategies..."
+          {/* Input */}
+          <form onSubmit={handleSubmit} className="p-4 border-t dark:border-gray-700">
+            <div className="flex space-x-2">
+              <input
+                type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask about market trends, trading strategies..."
+                className="flex-1 p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 disabled={isProcessing}
               />
-              <Button type="submit" disabled={isProcessing}>
-                Send
-              </Button>
-            </form>
-          </CardContent>
-        </TabsContent>
-
-        <TabsContent value="updates" className="mt-0">
-          <CardContent className="p-4 h-[540px]">
-            <ScrollArea className="h-full">
-              <div className="space-y-4">
-                {messages
-                  .filter(m => m.type === 'system' || (m.type === 'bot' && m.metadata?.isUpdate))
-                  .map((message) => (
-                    <div 
-                      key={message.metadata?.id || `${message.type}-${message.timestamp.getTime()}`} 
-                      className="space-y-1"
-                    >
-                      <div className={cn(
-                        "rounded-lg px-3 py-2",
-                        message.type === 'system' ? "bg-secondary" : "bg-muted"
-                      )}>
-                        {message.content}
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {message.timestamp.toLocaleTimeString()}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </TabsContent>
-      </Tabs>
-    </Card>
+              <button
+                type="submit"
+                disabled={isProcessing}
+                className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+              >
+                <FiSend className="w-5 h-5" />
+              </button>
+            </div>
+          </form>
+        </>
+      )}
+    </div>
   )
 } 

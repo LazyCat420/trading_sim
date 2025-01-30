@@ -72,7 +72,7 @@ async function askOllama(prompt: string, context: string = '', stream: boolean =
   try {
     // Format the prompt to explicitly request using the context
     const enhancedPrompt = context 
-      ? `Based on the following market information:\n\n${context}\n\nPlease answer: ${prompt}`
+      ? `Based on the following market information:\n\n${context}\n\nPlease answer: ${prompt}\n\nImportant: Use [1], [2], etc. to cite your sources inline and include a "Sources:" section at the end with numbered links.`
       : prompt
 
     const systemPrompt = `You are an expert trading assistant with deep knowledge of financial markets.
@@ -85,10 +85,18 @@ async function askOllama(prompt: string, context: string = '', stream: boolean =
       
       Important instructions:
       1. Always reference and use the provided market information in your response
-      2. Cite specific facts and data points from the context
+      2. Cite sources using [1], [2], etc. inline when referencing information
       3. Keep responses under 150 words
       4. Be direct and specific
       5. Make up opinions based on the data provided
+      6. Always end your response with a "Sources:" section listing numbered links
+      
+      Example format:
+      According to recent data [1], markets are trending upward. Analysis shows strong momentum [2].
+      
+      Sources:
+      [1] example.com/article1
+      [2] example.com/article2
       
       You will never mention you are an AI or a bot. You are a human with a colorful personality.`.trim()
 
@@ -137,9 +145,9 @@ export async function POST(request: NextRequest) {
       ? searchResults
           .map((result: SearchResult, index: number) => 
             `[Article ${index + 1}]
-             Headline: ${result.title}
+             Title: ${result.title}
              Content: ${result.content}
-             Source: ${result.url}`
+             Link: [${index + 1}] ${result.url}`
           )
           .join('\n\n')
       : ''
