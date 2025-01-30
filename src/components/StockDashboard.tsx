@@ -13,7 +13,7 @@ import { ResponsiveContainer } from 'recharts'
 import { cn } from "@/lib/utils"
 import { X } from "lucide-react"
 
-interface StockData {
+export interface StockData {
   symbol: string;
   price: number;
   change: number;
@@ -33,7 +33,7 @@ interface StockData {
   };
 }
 
-interface NewsItem {
+export interface NewsItem {
   title: string
   url: string
   time_published: string
@@ -43,7 +43,7 @@ interface NewsItem {
   image_url?: string
 }
 
-interface StockHistoryData {
+export interface StockHistoryData {
   date: string;
   price: number;
   volume: number;
@@ -58,28 +58,28 @@ interface StockHistoryData {
   vwap: number | null;
 }
 
-interface StockHistoryResponse {
+export interface StockHistoryResponse {
   data: StockHistoryData[];
 }
 
-interface RawDividendData {
+export interface RawDividendData {
   date: string;
   amount: number;
 }
 
-interface DividendData {
+export interface DividendData {
   date: string;
   dividend: number;
 }
 
-interface EarningsData {
+export interface EarningsData {
   date: string;
   actualEPS: number;
   estimatedEPS: number;
   surprise: number;
 }
 
-interface StockDetailData extends StockData {
+export interface StockDetailData extends StockData {
   dividendData?: DividendData[];
   earningsData?: EarningsData[];
 }
@@ -142,10 +142,25 @@ export default function StockDashboard() {
           const stocksData = await Promise.all(
             data.map(async (item: any) => {
               console.log('Fetching data for stock:', item.symbol);
-              const stockResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/${item.symbol}`);
-              const stockData = await stockResponse.json();
-              console.log('Stock data for', item.symbol, ':', stockData);
-              return stockData;
+              const stockResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/detailed/${item.symbol}`);
+              const rawData = await stockResponse.json();
+              console.log('Stock data for', item.symbol, ':', rawData);
+              
+              // Transform the detailed data into StockData format
+              return {
+                symbol: item.symbol.toUpperCase(),
+                price: rawData.valuation.pc || 0,
+                change: rawData.technical.change || 0,
+                changePercent: rawData.technical.changePercent || 0,
+                volume: rawData.technical.volume || 0,
+                marketCap: parseFloat(rawData.marketData.marketCap) || 0,
+                shortName: rawData.marketData.shortName || item.symbol,
+                longName: rawData.marketData.longName || item.symbol,
+                peRatio: rawData.valuation.pe || 0,
+                dividendYield: parseFloat(rawData.marketData.dividendYield) || 0,
+                fiftyTwoWeekHigh: rawData.technical.fiftyTwoWeekHigh || 0,
+                fiftyTwoWeekLow: rawData.technical.fiftyTwoWeekLow || 0
+              };
             })
           );
           const filteredStocks = stocksData.filter((stock: StockData | null) => stock !== null);
@@ -230,7 +245,7 @@ export default function StockDashboard() {
   const fetchStockPrice = async (symbol: string): Promise<StockData> => {
     try {
       console.log('fetchStockPrice - Starting fetch for symbol:', symbol);
-      const response = await fetch(`/api/stock?symbol=${symbol}`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/detailed/${symbol}`);
       console.log('fetchStockPrice - Response status:', response.status);
       
       if (!response.ok) {
@@ -239,30 +254,28 @@ export default function StockDashboard() {
         throw new Error('Failed to fetch stock price');
       }
 
-      const data = await response.json();
-      console.log('fetchStockPrice - Raw response data:', data);
+      const rawData = await response.json();
+      console.log('fetchStockPrice - Raw response data:', rawData);
       
-      if (!data) {
+      if (!rawData) {
         console.error('fetchStockPrice - No data received');
         throw new Error('No stock data received');
       }
 
-      // Ensure price is a number
-      const price = typeof data.price === 'number' ? data.price : parseFloat(data.price);
-      if (isNaN(price)) {
-        console.error('fetchStockPrice - Invalid price value:', data.price);
-        throw new Error('Invalid price data received');
-      }
-      
-      const stockData = {
+      // Transform the detailed data into StockData format
+      const stockData: StockData = {
         symbol: symbol.toUpperCase(),
-        price: price,
-        change: data.change || 0,
-        changePercent: data.changePercent || 0,
-        volume: data.volume,
-        marketCap: data.marketCap,
-        shortName: data.shortName,
-        longName: data.longName
+        price: rawData.valuation.pc || 0,
+        change: rawData.technical.change || 0,
+        changePercent: rawData.technical.changePercent || 0,
+        volume: rawData.technical.volume || 0,
+        marketCap: parseFloat(rawData.marketData.marketCap) || 0,
+        shortName: rawData.marketData.shortName || symbol,
+        longName: rawData.marketData.longName || symbol,
+        peRatio: rawData.valuation.pe || 0,
+        dividendYield: parseFloat(rawData.marketData.dividendYield) || 0,
+        fiftyTwoWeekHigh: rawData.technical.fiftyTwoWeekHigh || 0,
+        fiftyTwoWeekLow: rawData.technical.fiftyTwoWeekLow || 0
       };
       
       console.log('fetchStockPrice - Processed stock data:', stockData);
@@ -613,9 +626,26 @@ export default function StockDashboard() {
         watchlist.map(async (symbol) => {
           try {
             console.log(`updateStockPrices - Fetching data for ${symbol}`);
-            const data = await fetchStockPrice(symbol);
-            console.log(`updateStockPrices - Received data for ${symbol}:`, data);
-            return data;
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/detailed/${symbol}`);
+            const rawData = await response.json();
+            console.log(`updateStockPrices - Received data for ${symbol}:`, rawData);
+            
+            // Transform the detailed data into StockData format
+            const stockData: StockData = {
+              symbol: symbol.toUpperCase(),
+              price: rawData.valuation.pc || 0,
+              change: rawData.technical.change || 0,
+              changePercent: rawData.technical.changePercent || 0,
+              volume: rawData.technical.volume || 0,
+              marketCap: parseFloat(rawData.marketData.marketCap) || 0,
+              shortName: rawData.marketData.shortName || symbol,
+              longName: rawData.marketData.longName || symbol,
+              peRatio: rawData.valuation.pe || 0,
+              dividendYield: parseFloat(rawData.marketData.dividendYield) || 0,
+              fiftyTwoWeekHigh: rawData.technical.fiftyTwoWeekHigh || 0,
+              fiftyTwoWeekLow: rawData.technical.fiftyTwoWeekLow || 0
+            };
+            return stockData;
           } catch (error) {
             console.error(`updateStockPrices - Error updating ${symbol}:`, error);
             return null;
@@ -626,17 +656,7 @@ export default function StockDashboard() {
       console.log('updateStockPrices - All updated stocks:', updatedStocks);
       
       // Filter out failed updates and update the state
-      const validStocks = updatedStocks.filter((stock): stock is StockData => {
-        if (!stock) {
-          console.log('updateStockPrices - Filtering out null stock');
-          return false;
-        }
-        if (typeof stock.price !== 'number') {
-          console.log('updateStockPrices - Filtering out stock with invalid price:', stock);
-          return false;
-        }
-        return true;
-      });
+      const validStocks = updatedStocks.filter((stock): stock is StockData => stock !== null);
       
       console.log('updateStockPrices - Valid stocks after filtering:', validStocks);
       setStockPrices(validStocks);

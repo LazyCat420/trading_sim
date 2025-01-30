@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   console.log('Fetching stock price for symbol:', symbol);
   
   try {
-    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/${symbol}`;
+    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/detailed/${symbol}`;
     console.log('Fetching from backend URL:', url);
     
     const response = await fetch(url, {
@@ -40,33 +40,22 @@ export async function GET(request: NextRequest) {
 
     const rawData = await response.json();
     console.log('Raw backend response data:', rawData);
-    console.log('Raw data price fields:', {
-      currentPrice: rawData.currentPrice,
-      regularMarketPrice: rawData.regularMarketPrice,
-      price: rawData.price
-    });
 
-    // Transform the data to match frontend expectations
-    const price = rawData.currentPrice || rawData.regularMarketPrice || rawData.price;
-    console.log('Selected price:', price);
-
-    if (typeof price !== 'number' || isNaN(price)) {
-      console.error('Invalid price value:', price);
-      return NextResponse.json(
-        { error: 'Invalid price data received' },
-        { status: 400 }
-      );
-    }
-
+    // Transform the detailed data to match frontend expectations
     const transformedData = {
       symbol: symbol,
-      price: price,
-      change: rawData.change || rawData.regularMarketChange || 0,
-      changePercent: rawData.changePercent || rawData.regularMarketChangePercent || 0,
-      volume: rawData.volume || rawData.regularMarketVolume,
-      marketCap: rawData.marketCap,
-      shortName: rawData.shortName,
-      longName: rawData.longName
+      price: rawData.valuation.pc || 0,
+      change: rawData.technical.relVolume || 0,
+      changePercent: 0, // Calculate from historical data if needed
+      volume: rawData.technical.relVolume || 0,
+      marketCap: rawData.marketData.marketCap || "0",
+      shortName: symbol,
+      longName: symbol,
+      // Additional data from detailed endpoint
+      marketData: rawData.marketData,
+      valuation: rawData.valuation,
+      growth: rawData.growth,
+      technical: rawData.technical
     };
     
     console.log('Transformed data:', transformedData);

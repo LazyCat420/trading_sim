@@ -84,6 +84,9 @@ class StockInfo(BaseModel):
     exchange: Optional[str] = None
     currency: Optional[str] = None
     analystRating: Optional[dict] = None
+    eps: Optional[float] = None
+    pegRatio: Optional[float] = None
+    priceToBook: Optional[float] = None
 
 class StockCreate(BaseModel):
     symbol: str
@@ -148,24 +151,35 @@ async def get_stock_info(symbol: str):
             logger.warning(f"Failed to fetch recommendations: {str(e)}")
             latest_rating = None
         
+        # Fetch additional data
+        eps = info.get('trailingEps')
+        peg_ratio = info.get('pegRatio')
+        price_to_book = info.get('priceToBook')
+        dividend_yield = info.get('dividendYield') or info.get('trailingAnnualDividendYield')
+        fifty_two_week_high = info.get('fiftyTwoWeekHigh') or info.get('regularMarketDayHigh')
+        fifty_two_week_low = info.get('fiftyTwoWeekLow') or info.get('regularMarketDayLow')
+
         stock_info = StockInfo(
             symbol=symbol,
             currentPrice=float(current_price),
             change=float(change),
             changePercent=float(change_percent),
-            volume=info.get("volume", info.get("regularMarketVolume", 0)),
-            marketCap=info.get("marketCap", 0),
-            peRatio=info.get("forwardPE", info.get("trailingPE")),
-            dividendYield=info.get("dividendYield"),
-            fiftyTwoWeekHigh=info.get("fiftyTwoWeekHigh"),
-            fiftyTwoWeekLow=info.get("fiftyTwoWeekLow"),
-            shortName=info.get("shortName"),
-            longName=info.get("longName"),
-            sector=info.get("sector"),
-            industry=info.get("industry"),
-            exchange=info.get("exchange"),
-            currency=info.get("currency"),
-            analystRating=latest_rating
+            volume=info.get('volume', info.get('regularMarketVolume', 0)),
+            marketCap=info.get('marketCap', 0),
+            peRatio=info.get('forwardPE', info.get('trailingPE')),
+            dividendYield=dividend_yield,
+            fiftyTwoWeekHigh=fifty_two_week_high,
+            fiftyTwoWeekLow=fifty_two_week_low,
+            shortName=info.get('shortName'),
+            longName=info.get('longName'),
+            sector=info.get('sector'),
+            industry=info.get('industry'),
+            exchange=info.get('exchange'),
+            currency=info.get('currency'),
+            analystRating=latest_rating,
+            eps=eps,
+            pegRatio=peg_ratio,
+            priceToBook=price_to_book
         )
         
         return stock_info
@@ -667,6 +681,127 @@ async def clear_user_watchlist(user_id: int):
         return {"message": "Watchlist cleared successfully"}
     except Exception as e:
         logger.error(f"Error clearing watchlist: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/detailed/{symbol}")
+@retry_on_failure(max_retries=3, delay=1)
+async def get_detailed_stock_data(symbol: str):
+    try:
+        formatted_symbol = format_symbol(symbol)
+        logger.info(f"Fetching detailed data for symbol: {formatted_symbol}")
+        
+        stock = yf.Ticker(formatted_symbol)
+        info = stock.info
+        
+        if not info:
+            logger.error(f"No info data found for {formatted_symbol}")
+            raise HTTPException(status_code=404, detail=f"No data found for symbol {symbol}")
+
+        # Debug PE related fields for logging
+        pe_fields = {k: v for k, v in info.items() if 'pe' in k.lower() or 'price' in k.lower()}
+        logger.info("P/E Related Fields:")
+        logger.info(pe_fields)
+
+        # Get current price and calculate changes
+        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+        previous_close = info.get('previousClose', info.get('regularMarketPreviousClose', 0))
+        change = current_price - previous_close if previous_close else 0
+        change_percent = (change / previous_close * 100) if previous_close else 0
+
+        # Market Data
+        market_data = {
+            'marketCap': f"{info.get('marketCap') / 1e9:.2f}B" if info.get('marketCap') else "0B",
+            'income': f"{info.get('totalRevenue') / 1e9:.2f}B" if info.get('totalRevenue') else "0B",
+            'revenue': f"{info.get('totalRevenue') / 1e9:.2f}B" if info.get('totalRevenue') else "0B",
+            'bookSh': f"{info.get('bookValue', 0):.2f}",
+            'cashSh': f"{info.get('totalCashPerShare', 0):.2f}",
+            'dividend': f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') is not None else "0%",
+            'dividendYield': f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') is not None else "0%",
+            'employees': info.get('fullTimeEmployees', 0),
+            'shortName': info.get('shortName', symbol),
+            'longName': info.get('longName', symbol)
+        }
+
+        # Valuation
+        valuation = {
+            'pe': info.get('trailingPE', 0),
+            'forwardPE': info.get('forwardPE', 0),
+            'peg': info.get('pegRatio', 0),
+            'ps': info.get('priceToSalesTrailing12Months', 0),
+            'pb': info.get('priceToBook', 0),
+            'pc': current_price,
+            'pfcf': info.get('pfcf', 0),
+            'quickRatio': info.get('quickRatio', 0),
+            'currentRatio': info.get('currentRatio', 0),
+            'debtEq': info.get('debtToEquity', 0)
+        }
+
+        # Growth
+        eps_ttm = info.get('trailingEps', 0)
+        growth = {
+            'eps': {
+                'ttm': eps_ttm,
+                'nextY': info.get('earningsGrowth', 0) * 100 if info.get('earningsGrowth') else 0,
+                'nextQ': info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0,
+                'thisY': info.get('earningsGrowth', 0) * 100 if info.get('earningsGrowth') else 0,
+                'next5Y': info.get('earningsGrowth', 0) * 100 if info.get('earningsGrowth') else 0,
+                'past5Y': info.get('earningsGrowth', 0) * 100 if info.get('earningsGrowth') else 0,
+                'qoq': info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
+            },
+            'salesGrowth': {
+                'past5Y': info.get('revenueGrowth', 0) * 100 if info.get('revenueGrowth') else 0,
+                'qoq': info.get('revenueQuarterlyGrowth', 0) * 100 if info.get('revenueQuarterlyGrowth') else 0
+            }
+        }
+
+        # Technical
+        technical = {
+            'rsi': info.get('rsi14d', 0),
+            'relVolume': info.get('volume', 0),
+            'volume': info.get('volume', 0),
+            'shortFloat': info.get('shortPercentOfFloat', 0) * 100 if info.get('shortPercentOfFloat') else 0,
+            'beta': info.get('beta', 0),
+            'change': change,
+            'changePercent': change_percent,
+            'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 0),
+            'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 0),
+            'targetPrice': info.get('targetMeanPrice', 0)
+        }
+
+        # Get historical data for SMA calculations
+        hist = stock.history(period="1y", interval="1d")
+        if not hist.empty:
+            # Calculate SMAs
+            hist['SMA20'] = hist['Close'].rolling(window=20).mean()
+            hist['SMA50'] = hist['Close'].rolling(window=50).mean()
+            hist['SMA200'] = hist['Close'].rolling(window=200).mean()
+            
+            # Calculate SMA percentages
+            if current_price:
+                last_sma20 = hist['SMA20'].iloc[-1]
+                last_sma50 = hist['SMA50'].iloc[-1]
+                last_sma200 = hist['SMA200'].iloc[-1]
+                
+                technical['sma20'] = ((current_price - last_sma20) / last_sma20 * 100) if last_sma20 else 0
+                technical['sma50'] = ((current_price - last_sma50) / last_sma50 * 100) if last_sma50 else 0
+                technical['sma200'] = ((current_price - last_sma200) / last_sma200 * 100) if last_sma200 else 0
+
+        # Combine all data
+        detailed_data = {
+            'marketData': market_data,
+            'valuation': valuation,
+            'growth': growth,
+            'technical': technical
+        }
+
+        logger.info("Detailed data:")
+        logger.info(detailed_data)
+
+        return detailed_data
+
+    except Exception as e:
+        logger.error(f"Error fetching detailed data for {symbol}: {str(e)}")
+        logger.exception("Full traceback:")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Export the router instead of app

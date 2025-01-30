@@ -3,14 +3,18 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Card, CardContent } from "@/components/ui/card"
 import MarketData from './MarketData'
+import { StockHistoryData, DividendData, EarningsData } from './StockDashboard'
 
 let tvScriptLoadingPromise: Promise<void> | null = null;
 
 interface StockChartProps {
   symbol: string;
+  data?: StockHistoryData[];
+  dividendData?: DividendData[];
+  earningsData?: EarningsData[];
 }
 
-const StockChart: React.FC<StockChartProps> = ({ symbol }) => {
+const StockChart: React.FC<StockChartProps> = ({ symbol, data, dividendData, earningsData }) => {
   const onLoadScriptRef = useRef<(() => void) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [marketData, setMarketData] = useState<any>(null);
@@ -46,7 +50,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol }) => {
     const fetchMarketData = async () => {
       console.log('Fetching market data for symbol:', symbol);
       try {
-        const response = await fetch(`/api/stock/info/${symbol}`);
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/detailed/${symbol}`);
         console.log('Market data response status:', response.status);
         
         const responseText = await response.text();
@@ -57,9 +61,83 @@ const StockChart: React.FC<StockChartProps> = ({ symbol }) => {
         }
         
         try {
-          const data = JSON.parse(responseText);
-          console.log('Parsed market data:', data);
-          setMarketData(data);
+          const rawData = JSON.parse(responseText);
+          console.log('Parsed market data:', rawData);
+          
+          // Helper function to parse percentage string
+          const parsePercentage = (value: string | number): number => {
+            if (typeof value === 'string') {
+              return parseFloat(value.replace('%', '')) || 0;
+            }
+            return value || 0;
+          };
+
+          // Helper function to parse currency string
+          const parseCurrency = (value: string | number): number => {
+            if (typeof value === 'string') {
+              return parseFloat(value.replace('$', '')) || 0;
+            }
+            return value || 0;
+          };
+
+          // Transform the data to match the MarketData interface
+          const transformedData = {
+            // Market Data
+            marketCap: rawData.marketData.marketCap || '0',
+            income: rawData.marketData.income || '0',
+            revenue: rawData.marketData.revenue || '0',
+            bookSh: rawData.marketData.bookSh || '0',
+            cashSh: rawData.marketData.cashSh || '0',
+            dividend: rawData.marketData.dividend || '0%',
+            dividendYield: rawData.marketData.dividend || '0%',
+            employees: parseInt(rawData.marketData.employees) || 0,
+
+            // Trading Data
+            price: rawData.valuation.pc || 0,
+            volume: rawData.technical.relVolume?.toString() || '0',
+            prevClose: rawData.valuation.pc || 0,
+            change: rawData.technical.relVolume || 0,
+
+            // Valuation
+            pe: rawData.valuation.pe || 0,
+            forwardPE: rawData.valuation.forwardPE || 0,
+            peg: rawData.valuation.peg || 0,
+            ps: rawData.valuation.ps || 0,
+            pb: rawData.valuation.pb || 0,
+            pc: rawData.valuation.pc || 0,
+            pfcf: rawData.valuation.pfcf || 0,
+            quickRatio: rawData.valuation.quickRatio || 0,
+            currentRatio: rawData.valuation.currentRatio || 0,
+            debtEq: rawData.valuation.debtEq || 0,
+
+            // Growth & Performance
+            eps: {
+              ttm: parseCurrency(rawData.growth.eps.ttm),
+              nextY: parsePercentage(rawData.growth.eps.nextY),
+              nextQ: parsePercentage(rawData.growth.eps.nextQ),
+              thisY: parsePercentage(rawData.growth.eps.thisY),
+              next5Y: parsePercentage(rawData.growth.eps.next5Y),
+              past5Y: parsePercentage(rawData.growth.eps.past5Y),
+              qoq: 0 // This field seems to be missing in the response
+            },
+            salesGrowth: {
+              past5Y: 0, // This field seems to be missing in the response
+              qoq: parsePercentage(rawData.growth.salesQQ)
+            },
+
+            // Technical Indicators
+            rsi: rawData.technical.rsi || 0,
+            relVolume: rawData.technical.relVolume || 0,
+            shortFloat: parsePercentage(rawData.technical.shortFloat),
+            beta: rawData.technical.beta || 0,
+            sma20: parsePercentage(rawData.technical.sma20),
+            sma50: parsePercentage(rawData.technical.sma50),
+            sma200: parsePercentage(rawData.technical.sma200),
+            targetPrice: parseCurrency(rawData.technical.targetPrice)
+          };
+
+          console.log('Transformed market data:', transformedData);
+          setMarketData(transformedData);
           setError(null);
         } catch (parseError) {
           console.error('Failed to parse market data:', parseError);
@@ -127,12 +205,8 @@ const StockChart: React.FC<StockChartProps> = ({ symbol }) => {
           Error loading market data: {error}
         </div>
       )}
-      {marketData ? (
+      {marketData && (
         <MarketData data={marketData} />
-      ) : !error && (
-        <div className="text-center p-4">
-          Loading market data...
-        </div>
       )}
     </div>
   );
