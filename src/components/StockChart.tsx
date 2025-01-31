@@ -83,57 +83,57 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data, dividendData, ear
           // Transform the data to match the MarketData interface
           const transformedData = {
             // Market Data
-            marketCap: rawData.marketData.marketCap || '0',
-            income: rawData.marketData.income || '0',
-            revenue: rawData.marketData.revenue || '0',
-            bookSh: rawData.marketData.bookSh || '0',
-            cashSh: rawData.marketData.cashSh || '0',
-            dividend: rawData.marketData.dividend || '0%',
-            dividendYield: rawData.marketData.dividend || '0%',
-            employees: parseInt(rawData.marketData.employees) || 0,
+            marketCap: rawData.marketData.marketCap,
+            income: rawData.marketData.income,
+            revenue: rawData.marketData.revenue,
+            bookSh: rawData.marketData.bookValue,
+            cashSh: rawData.marketData.cashPerShare,
+            dividend: rawData.marketData.dividend || '0',
+            dividendYield: rawData.marketData.dividendYield ? `${(rawData.marketData.dividendYield * 100).toFixed(2)}%` : '0%',
+            employees: rawData.marketData.employees,
 
             // Trading Data
-            price: rawData.valuation.pc || 0,
-            volume: rawData.technical.relVolume?.toString() || '0',
+            price: rawData.valuation.pc,
+            volume: rawData.technical.volume?.toString() || 'N/A',
             prevClose: rawData.valuation.pc || 0,
-            change: rawData.technical.relVolume || 0,
+            change: rawData.technical.change || 0,
 
             // Valuation
-            pe: rawData.valuation.pe || 0,
-            forwardPE: rawData.valuation.forwardPE || 0,
-            peg: rawData.valuation.peg || 0,
-            ps: rawData.valuation.ps || 0,
-            pb: rawData.valuation.pb || 0,
-            pc: rawData.valuation.pc || 0,
-            pfcf: rawData.valuation.pfcf || 0,
-            quickRatio: rawData.valuation.quickRatio || 0,
-            currentRatio: rawData.valuation.currentRatio || 0,
-            debtEq: rawData.valuation.debtEq || 0,
+            pe: rawData.valuation.pe,
+            forwardPE: rawData.valuation.forwardPE,
+            peg: rawData.valuation.peg,
+            ps: rawData.valuation.ps,
+            pb: rawData.valuation.pb,
+            pc: rawData.valuation.pc,
+            pfcf: rawData.valuation.pfcf,
+            quickRatio: rawData.valuation.quickRatio,
+            currentRatio: rawData.valuation.currentRatio,
+            debtEq: rawData.valuation.debtEq,
 
             // Growth & Performance
             eps: {
-              ttm: parseCurrency(rawData.growth.eps.ttm),
-              nextY: parsePercentage(rawData.growth.eps.nextY),
-              nextQ: parsePercentage(rawData.growth.eps.nextQ),
-              thisY: parsePercentage(rawData.growth.eps.thisY),
-              next5Y: parsePercentage(rawData.growth.eps.next5Y),
-              past5Y: parsePercentage(rawData.growth.eps.past5Y),
-              qoq: 0 // This field seems to be missing in the response
+              ttm: 0, // Not available in current response
+              nextY: 0,
+              nextQ: 0,
+              thisY: 0,
+              next5Y: 0,
+              past5Y: 0,
+              qoq: 0
             },
             salesGrowth: {
-              past5Y: 0, // This field seems to be missing in the response
-              qoq: parsePercentage(rawData.growth.salesQQ)
+              past5Y: 0,
+              qoq: 0
             },
 
             // Technical Indicators
-            rsi: rawData.technical.rsi || 0,
-            relVolume: rawData.technical.relVolume || 0,
-            shortFloat: parsePercentage(rawData.technical.shortFloat),
-            beta: rawData.technical.beta || 0,
-            sma20: parsePercentage(rawData.technical.sma20),
-            sma50: parsePercentage(rawData.technical.sma50),
-            sma200: parsePercentage(rawData.technical.sma200),
-            targetPrice: parseCurrency(rawData.technical.targetPrice)
+            rsi: rawData.technical.rsi,
+            relVolume: rawData.technical.relVolume,
+            shortFloat: rawData.technical.shortFloat,
+            beta: rawData.technical.beta,
+            sma20: 0, // Not available in current response
+            sma50: 0,
+            sma200: 0,
+            targetPrice: rawData.technical.targetPrice
           };
 
           console.log('Transformed market data:', transformedData);
