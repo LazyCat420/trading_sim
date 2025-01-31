@@ -1,12 +1,30 @@
 Trading Bot Rules:
 
+Give the bot $10,000 starting capital. Also it still failed to toggle automated trading. I think the issue is it needs data to start looking at so have it start scraping the data in the market data tab since the watchlist I have will at least be a control so the bot starts off with those stocks. Have it so the bot can also pick more stocks and brainstom stocks to research based on the news it finds. also have the bot check the news thru the searxng pipeline we made so it can start there for stock market news along with the watchlist. 
+
 # Core Architecture
 1. System Foundation:
    - Local LLM Orchestrator: Ollama with llama3.2:latest model
    - Tool Calling Framework: Custom implementation using LangChain's new tools standard
+   - Chat History Management: Session-based conversation tracking with context retention
+
+# Conversation Context Management
+2. Chat History Features:
+   - Session Management:
+     • Unique session IDs for each trading conversation
+     • Persistent context across multiple interactions
+     • Maximum 10 messages per session for focused context
+   - Context Integration:
+     • Previous trading decisions are referenced
+     • Market analysis continuity
+     • Strategy consistency enforcement
+   - Memory Management:
+     • In-memory storage for development
+     • Upgradeable to Redis/Database for production
+     • Automatic context pruning for relevance
 
 # Strategy Switching Mechanism
-2. Investment Philosophy Matrix:
+3. Investment Philosophy Matrix:
    - Value Investing (Graham/Buffett):
      • Parameters: P/E < 15, P/B < 1.5, D/E < 0.3
      • Holding Period: 3-5 year minimum
@@ -18,7 +36,7 @@ Trading Bot Rules:
      • Hidden Markov Models for regime detection
 
 # Algorithm Stack
-3. Hybrid Analysis Engines:
+4. Hybrid Analysis Engines:
    - Fundamental Analysis:
      • Custom DCF model with Monte Carlo simulations
      • Sentiment parsing of earnings calls (whisper.cpp local transcribe)
@@ -30,7 +48,11 @@ Trading Bot Rules:
      • SHAP values for feature importance
 
 # Tool Calling Integration
-4. Local LLM Tool Registry:
+5. Local LLM Tool Registry:
+   - Chat Tools:
+     • get_chat_history(session_id) -> List[Message]
+     • update_chat_history(session_id, message)
+     • clear_chat_history(session_id)
    - Data Tools:
      • live_market_scan(sectors, filters)
      • historical_pattern_match(ticker, years)
@@ -49,12 +71,14 @@ Trading Bot Rules:
      • adjust_portfolio_hedge(risk_level)
      • dark_pool_order(routing_strategy)
    - Decision Tools:
-     • news_analysis_workflow(ticker) -> Analysis:
-       1. Call news_sentiment_scraper()
-       2. Run sentiment_analysis()
-       3. Generate trade_plan()
-     • technical_trigger_engine(conditions) -> Triggers
-     • fundamental_revaluation_check() -> Alert
+     • query_classifier(input_text) -> Type:
+       1. News detection using keyword matching
+       2. History requests using intent recognition
+       3. Fallback to general search
+     • integrated_chat_handler(session_id, message) -> Response:
+       1. Call query_classifier()
+       2. Route to appropriate workflow
+       3. Maintain context chain
    - Scheduling Tools:
      • create_price_alert(ticker, target_price)
      • schedule_limit_order(ticker, price, quantity)
@@ -62,7 +86,7 @@ Trading Bot Rules:
      • pattern_recognition_watchlist(symbols)
 
 # Risk Management
-5. Capital Preservation Rules:
+6. Capital Preservation Rules:
    - Position Sizing:
      • Kelly Criterion implementation
      • Dynamic correlation adjustment
@@ -74,7 +98,7 @@ Trading Bot Rules:
      • Bitcoin correlation breaker
 
 # Adaptive Learning
-6. Feedback Mechanisms:
+7. Feedback Mechanisms:
    - Post-Trade Analysis:
      • Win/loss attribution reporting
      • Strategy drift detection
@@ -84,7 +108,7 @@ Trading Bot Rules:
      • Monthly regime classification refresh
 
 # Data Infrastructure
-7. Pipeline Architecture:
+8. Pipeline Architecture:
    - Scraping Framework:
      • Playwright cluster for parallel scraping
      • Rotating residential proxies (BrightData/Oxylabs)
@@ -99,7 +123,7 @@ Trading Bot Rules:
      • Neo4j for market relationships
 
 # State Management
-8. Event-Driven Architecture:
+9. Event-Driven Architecture:
    - Trigger Engine:
      • Price-based triggers (support for technical levels)
      • News sentiment thresholds
