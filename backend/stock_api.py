@@ -10,8 +10,9 @@ import os
 from dotenv import load_dotenv
 import yfinance as yf
 import pandas as pd
-from database import get_db
+from database import get_db, log_database_contents
 import database as db
+import sqlite3
 
 # Load environment variables
 load_dotenv()
@@ -181,6 +182,9 @@ async def get_stock_info(symbol: str):
             pegRatio=peg_ratio,
             priceToBook=price_to_book
         )
+        
+        # Add this line where you want to log the database contents
+        log_database_contents()
         
         return stock_info
         
@@ -477,122 +481,12 @@ async def get_market_news(
         logger.exception("Full traceback:")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/watchlist/")
-async def add_to_watchlist(stock: StockCreate):
-    with get_db() as conn:
-        cursor = conn.cursor()
-        try:
-            # Check if stock exists and is active
-            cursor.execute(
-                "SELECT * FROM stocks WHERE symbol = ? AND is_active = 1", 
-                (stock.symbol,)
-            )
-            if cursor.fetchone():
-                raise HTTPException(status_code=400, detail="Stock already in watchlist")
-
-            # Check if stock exists but is inactive
-            cursor.execute(
-                "SELECT * FROM stocks WHERE symbol = ? AND is_active = 0", 
-                (stock.symbol,)
-            )
-            inactive_stock = cursor.fetchone()
-            
-            if inactive_stock:
-                # Reactivate the stock
-                cursor.execute(
-                    "UPDATE stocks SET is_active = 1, last_updated = ? WHERE symbol = ?",
-                    (datetime.utcnow(), stock.symbol)
-                )
-            else:
-                # Add new stock
-                cursor.execute("""
-                    INSERT INTO stocks (symbol, name, last_updated)
-                    VALUES (?, ?, ?)
-                """, (stock.symbol, stock.name, datetime.utcnow()))
-            
-            conn.commit()
-            
-            # Get the inserted/updated stock
-            cursor.execute("SELECT * FROM stocks WHERE symbol = ?", (stock.symbol,))
-            db_stock = cursor.fetchone()
-            
-            return {
-                "id": db_stock["id"],
-                "symbol": db_stock["symbol"],
-                "name": db_stock["name"],
-                "added_at": db_stock["added_at"],
-                "last_price": db_stock["last_price"],
-                "last_updated": db_stock["last_updated"],
-                "is_active": bool(db_stock["is_active"])
-            }
-            
-        except Exception as e:
-            conn.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/watchlist/")
-async def get_watchlist():
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM stocks WHERE is_active = 1")
-        stocks = cursor.fetchall()
-        
-        return [{
-            "id": stock["id"],
-            "symbol": stock["symbol"],
-            "name": stock["name"],
-            "added_at": stock["added_at"],
-            "last_price": stock["last_price"],
-            "last_updated": stock["last_updated"],
-            "is_active": bool(stock["is_active"])
-        } for stock in stocks]
-
-@router.delete("/watchlist/{symbol}")
-async def remove_from_watchlist(symbol: str):
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM stocks WHERE symbol = ?", (symbol,))
-        stock = cursor.fetchone()
-        
-        if not stock:
-            raise HTTPException(status_code=404, detail="Stock not found")
-        
-        cursor.execute(
-            "UPDATE stocks SET is_active = 0 WHERE symbol = ?",
-            (symbol,)
-        )
-        conn.commit()
-        
-        return {"message": "Stock removed from watchlist"}
-
 @router.get("/{symbol}")
 async def get_stock_data(symbol: str):
     try:
         # Get stock data from yfinance
         stock = yf.Ticker(symbol)
         info = stock.info
-        
-        # Update database if stock is in watchlist
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM stocks WHERE symbol = ? AND is_active = 1", 
-                (symbol,)
-            )
-            db_stock = cursor.fetchone()
-            
-            if db_stock:
-                cursor.execute("""
-                    UPDATE stocks 
-                    SET last_price = ?, last_updated = ?, name = COALESCE(name, ?)
-                    WHERE symbol = ?
-                """, (
-                    info.get('regularMarketPrice'),
-                    datetime.utcnow(),
-                    info.get('shortName') or info.get('longName'),
-                    symbol
-                ))
-                conn.commit()
         
         return {
             "symbol": symbol,
@@ -613,196 +507,6 @@ async def get_stock_data(symbol: str):
     except Exception as e:
         logger.error(f"Error fetching stock data for {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch stock data: {str(e)}")
-
-# Watchlist endpoints
-@router.post("/watchlist/{user_id}/add")
-async def add_to_watchlist(user_id: int, item: WatchlistItem):
-    try:
-        logger.info(f"Adding stock {item.symbol} to watchlist for user {user_id}")
-        # First get the stock info to ensure it exists and get current price
-        stock_info = await get_stock_info(item.symbol)
-        
-        # Add to watchlist
-        success = db.add_to_watchlist(user_id, item.symbol)
-        if not success:
-            logger.warning(f"Stock {item.symbol} already in watchlist for user {user_id}")
-            return {"message": "Stock already in watchlist"}
-            
-        return {"message": f"Stock {item.symbol} added to watchlist"}
-    except Exception as e:
-        logger.error(f"Error adding stock to watchlist: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/watchlist/{user_id}/remove/{symbol}")
-async def remove_from_watchlist(user_id: int, symbol: str):
-    try:
-        logger.info(f"Removing stock {symbol} from watchlist for user {user_id}")
-        success = db.remove_from_watchlist(user_id, symbol)
-        if not success:
-            logger.error(f"Stock {symbol} not found in watchlist for user {user_id}")
-            raise HTTPException(status_code=404, detail=f"Stock {symbol} not found in watchlist")
-        return {"message": f"Stock {symbol} removed from watchlist"}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logger.error(f"Error removing stock from watchlist: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/watchlist/{user_id}")
-async def get_user_watchlist(user_id: int) -> List[WatchlistResponse]:
-    try:
-        logger.info(f"Getting watchlist for user {user_id}")
-        watchlist = db.get_user_watchlist(user_id)
-        logger.info(f"Found {len(watchlist)} items in watchlist")
-        
-        result = []
-        for item in watchlist:
-            logger.debug(f"Processing watchlist item: {item}")
-            logger.debug(f"last_updated type: {type(item['last_updated'])}, value: {item['last_updated']}")
-            
-            response = WatchlistResponse(
-                symbol=item["symbol"],
-                name=item["name"],
-                last_price=item["last_price"],
-                last_updated=item["last_updated"]  # SQLite datetime string is already in ISO format
-            )
-            result.append(response)
-            
-        return result
-    except Exception as e:
-        logger.error(f"Error getting watchlist: {str(e)}")
-        logger.exception("Full traceback:")  # This will log the full stack trace
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/watchlist/{user_id}/clear")
-async def clear_user_watchlist(user_id: int):
-    try:
-        db.clear_watchlist(user_id)
-        return {"message": "Watchlist cleared successfully"}
-    except Exception as e:
-        logger.error(f"Error clearing watchlist: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/detailed/{symbol}")
-@retry_on_failure(max_retries=3, delay=1)
-async def get_detailed_stock_data(symbol: str):
-    try:
-        formatted_symbol = format_symbol(symbol)
-        logger.info(f"Fetching detailed data for symbol: {formatted_symbol}")
-        
-        stock = yf.Ticker(formatted_symbol)
-        info = stock.info
-        
-        if not info:
-            logger.error(f"No info data found for {formatted_symbol}")
-            raise HTTPException(status_code=404, detail=f"No data found for symbol {symbol}")
-
-        # Debug PE related fields for logging
-        pe_fields = {k: v for k, v in info.items() if 'pe' in k.lower() or 'price' in k.lower()}
-        logger.info("P/E Related Fields:")
-        logger.info(pe_fields)
-
-        # Get current price and calculate changes
-        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
-        previous_close = info.get('previousClose', info.get('regularMarketPreviousClose', 0))
-        change = current_price - previous_close if previous_close else 0
-        change_percent = (change / previous_close * 100) if previous_close else 0
-
-        # Market Data
-        market_data = {
-            'marketCap': f"{info.get('marketCap') / 1e9:.2f}B" if info.get('marketCap') else "0B",
-            'income': f"{info.get('totalRevenue') / 1e9:.2f}B" if info.get('totalRevenue') else "0B",
-            'revenue': f"{info.get('totalRevenue') / 1e9:.2f}B" if info.get('totalRevenue') else "0B",
-            'bookSh': f"{info.get('bookValue', 0):.2f}",
-            'cashSh': f"{info.get('totalCashPerShare', 0):.2f}",
-            'dividend': f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') is not None else "0%",
-            'dividendYield': f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') is not None else "0%",
-            'employees': info.get('fullTimeEmployees', 0),
-            'shortName': info.get('shortName', symbol),
-            'longName': info.get('longName', symbol)
-        }
-
-        # Valuation
-        valuation = {
-            'pe': info.get('trailingPE', 0),
-            'forwardPE': info.get('forwardPE', 0),
-            'peg': info.get('pegRatio', 0),
-            'ps': info.get('priceToSalesTrailing12Months', 0),
-            'pb': info.get('priceToBook', 0),
-            'pc': current_price,
-            'pfcf': info.get('pfcf', 0),
-            'quickRatio': info.get('quickRatio', 0),
-            'currentRatio': info.get('currentRatio', 0),
-            'debtEq': info.get('debtToEquity', 0)
-        }
-
-        # Growth
-        eps_ttm = info.get('trailingEps', 0)
-        growth = {
-            'eps': {
-                'ttm': eps_ttm,
-                'nextY': info.get('earningsGrowth', 0) * 100 if info.get('earningsGrowth') else 0,
-                'nextQ': info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0,
-                'thisY': info.get('earningsGrowth', 0) * 100 if info.get('earningsGrowth') else 0,
-                'next5Y': info.get('earningsGrowth', 0) * 100 if info.get('earningsGrowth') else 0,
-                'past5Y': info.get('earningsGrowth', 0) * 100 if info.get('earningsGrowth') else 0,
-                'qoq': info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
-            },
-            'salesGrowth': {
-                'past5Y': info.get('revenueGrowth', 0) * 100 if info.get('revenueGrowth') else 0,
-                'qoq': info.get('revenueQuarterlyGrowth', 0) * 100 if info.get('revenueQuarterlyGrowth') else 0
-            }
-        }
-
-        # Technical
-        technical = {
-            'rsi': info.get('rsi14d', 0),
-            'relVolume': info.get('volume', 0),
-            'volume': info.get('volume', 0),
-            'shortFloat': info.get('shortPercentOfFloat', 0) * 100 if info.get('shortPercentOfFloat') else 0,
-            'beta': info.get('beta', 0),
-            'change': change,
-            'changePercent': change_percent,
-            'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 0),
-            'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 0),
-            'targetPrice': info.get('targetMeanPrice', 0)
-        }
-
-        # Get historical data for SMA calculations
-        hist = stock.history(period="1y", interval="1d")
-        if not hist.empty:
-            # Calculate SMAs
-            hist['SMA20'] = hist['Close'].rolling(window=20).mean()
-            hist['SMA50'] = hist['Close'].rolling(window=50).mean()
-            hist['SMA200'] = hist['Close'].rolling(window=200).mean()
-            
-            # Calculate SMA percentages
-            if current_price:
-                last_sma20 = hist['SMA20'].iloc[-1]
-                last_sma50 = hist['SMA50'].iloc[-1]
-                last_sma200 = hist['SMA200'].iloc[-1]
-                
-                technical['sma20'] = ((current_price - last_sma20) / last_sma20 * 100) if last_sma20 else 0
-                technical['sma50'] = ((current_price - last_sma50) / last_sma50 * 100) if last_sma50 else 0
-                technical['sma200'] = ((current_price - last_sma200) / last_sma200 * 100) if last_sma200 else 0
-
-        # Combine all data
-        detailed_data = {
-            'marketData': market_data,
-            'valuation': valuation,
-            'growth': growth,
-            'technical': technical
-        }
-
-        logger.info("Detailed data:")
-        logger.info(detailed_data)
-
-        return detailed_data
-
-    except Exception as e:
-        logger.error(f"Error fetching detailed data for {symbol}: {str(e)}")
-        logger.exception("Full traceback:")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Export the router instead of app
 app = router

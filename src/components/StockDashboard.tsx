@@ -131,7 +131,7 @@ export default function StockDashboard() {
         setIsLoading(true);
         setError(null);
         
-        const response = await fetch('/api/stock/watchlist/1');
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/watchlist/1`);
         console.log('Watchlist response status:', response.status);
         const data = await response.json();
         console.log('Watchlist response data:', data);
@@ -426,11 +426,12 @@ export default function StockDashboard() {
   const handleAddStock = async () => {
     if (!searchSymbol) return;
     
-    console.log('handleAddStock - Starting add for symbol:', searchSymbol);
+    const symbol = searchSymbol.toUpperCase();
+    console.log('handleAddStock - Starting add for symbol:', symbol);
     
     // Check if stock is already in the list
-    if (watchlist.some(stock => stock === searchSymbol.toUpperCase())) {
-      console.log('handleAddStock - Stock already in watchlist:', searchSymbol);
+    if (watchlist.some(stock => stock === symbol)) {
+      console.log('handleAddStock - Stock already in watchlist:', symbol);
       setError('Stock is already in your list');
       return;
     }
@@ -439,56 +440,52 @@ export default function StockDashboard() {
     setError(null);
     
     try {
+      // First fetch stock data to validate it exists
       console.log('handleAddStock - Fetching stock data...');
-      const stockData = await fetchStockPrice(searchSymbol.toUpperCase());
+      const stockData = await fetchStockPrice(symbol);
       console.log('handleAddStock - Received stock data:', stockData);
       
-      if (stockData) {
-        console.log('handleAddStock - Adding to watchlist...');
-        // Add to watchlist using new endpoint
-        const response = await fetch('/api/stock/watchlist/1/add', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            symbol: searchSymbol.toUpperCase()
-          }),
-        });
-        
-        console.log('handleAddStock - Watchlist add response status:', response.status);
-        console.log('handleAddStock - Watchlist add response headers:', Object.fromEntries(response.headers.entries()));
+      if (!stockData) {
+        throw new Error('Failed to fetch stock data');
+      }
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('handleAddStock - Failed to add to watchlist:', errorText);
-          throw new Error('Failed to add stock to watchlist');
-        }
+      // Add to watchlist in a transaction
+      console.log('handleAddStock - Adding to watchlist...');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/watchlist/1/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          symbol,
+          name: stockData.shortName || symbol,
+          price: stockData.price,
+          lastUpdated: new Date().toISOString()
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('handleAddStock - Failed to add to watchlist:', errorData);
+        throw new Error(errorData?.error || 'Failed to add stock to watchlist');
+      }
 
-        const responseData = await response.json();
-        console.log('handleAddStock - Watchlist add response data:', responseData);
+      const responseData = await response.json();
+      console.log('handleAddStock - Watchlist add response data:', responseData);
 
-        // Update state with new stock data
-        console.log('handleAddStock - Current stockPrices:', stockPrices);
-        setStockPrices(prev => {
-          const newStockPrices = [...prev, stockData];
-          console.log('handleAddStock - Updated stockPrices:', newStockPrices);
-          return newStockPrices;
-        });
-        
-        setWatchlist(prev => {
-          const newWatchlist = [...prev, searchSymbol.toUpperCase()];
-          console.log('handleAddStock - Updated watchlist:', newWatchlist);
-          return newWatchlist;
-        });
-
-        await handleStockSelect(searchSymbol.toUpperCase());
+      // Only update state if the backend transaction was successful
+      if (responseData.success) {
+        setStockPrices(prev => [...prev, stockData]);
+        setWatchlist(prev => [...prev, symbol]);
         setSearchSymbol('');
+        await handleStockSelect(symbol);
         console.log('handleAddStock - Successfully added stock');
+      } else {
+        throw new Error('Failed to add stock to watchlist');
       }
     } catch (error) {
       console.error('handleAddStock - Error:', error);
-      setError('Failed to add stock');
+      setError(error instanceof Error ? error.message : 'Failed to add stock');
     } finally {
       setIsLoading(false);
     }
@@ -518,7 +515,7 @@ export default function StockDashboard() {
       console.log('handleRemoveStock - Removing stock:', symbol);
       
       // Remove from watchlist using new endpoint
-      const response = await fetch(`/api/stock/watchlist/1/remove/${symbol}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/watchlist/1/remove/${symbol}`, {
         method: 'DELETE'
       });
 
@@ -564,7 +561,7 @@ export default function StockDashboard() {
       
       console.log('handleClearWatchlist - Clearing watchlist');
       
-      const response = await fetch('/api/stock/watchlist/1/clear', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/watchlist/1/clear`, {
         method: 'DELETE'
       });
 
@@ -648,17 +645,14 @@ export default function StockDashboard() {
             return stockData;
           } catch (error) {
             console.error(`updateStockPrices - Error updating ${symbol}:`, error);
-            return null;
+            // Return existing stock data if available
+            return stockPrices.find(s => s.symbol === symbol) || null;
           }
         })
       );
       
-      console.log('updateStockPrices - All updated stocks:', updatedStocks);
-      
-      // Filter out failed updates and update the state
-      const validStocks = updatedStocks.filter((stock): stock is StockData => stock !== null);
-      
-      console.log('updateStockPrices - Valid stocks after filtering:', validStocks);
+      // Filter out null values but keep failed updates that have previous data
+      const validStocks = updatedStocks.filter((stock): stock is StockData => !!stock);
       setStockPrices(validStocks);
     } catch (error) {
       console.error('Error in updateStockPrices:', error);

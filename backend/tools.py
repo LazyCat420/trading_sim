@@ -6,12 +6,20 @@ from typing import Optional
 import os
 import json
 from pydantic import BaseModel
+from database import get_db, add_to_watchlist, remove_from_watchlist, get_user_watchlist
 
+# Create router without prefix - we'll mount it with prefix in main app
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 class ChatMessage(BaseModel):
     content: str
+
+class WatchlistItem(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+    last_price: Optional[float] = None
+    last_updated: Optional[str] = None
 
 async def search_searxng(query: str, instance_url: str = "http://localhost:70") -> dict:
     """
@@ -103,5 +111,68 @@ async def chat_endpoint(message: ChatMessage):
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
+@router.post("/stock/watchlist/{user_id}/add")
+async def add_stock_to_watchlist(user_id: int, item: WatchlistItem):
+    logger.info(f"Adding stock to watchlist - User: {user_id}, Symbol: {item.symbol}")
+    try:
+        success = add_to_watchlist(user_id, item.symbol, item.name, item.last_price, item.last_updated)
+        if not success:
+            logger.error(f"Failed to add stock {item.symbol} to watchlist for user {user_id}")
+            raise HTTPException(status_code=500, detail="Failed to add stock to watchlist")
+        logger.info(f"Successfully added {item.symbol} to watchlist for user {user_id}")
+        return {"message": "Stock added to watchlist", "success": True}
+    except Exception as e:
+        logger.error(f"Error adding stock to watchlist: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/stock/watchlist/{user_id}/remove/{symbol}")
+async def remove_stock_from_watchlist(user_id: int, symbol: str):
+    logger.info(f"Removing stock from watchlist - User: {user_id}, Symbol: {symbol}")
+    try:
+        success = remove_from_watchlist(user_id, symbol)
+        if not success:
+            logger.error(f"Stock {symbol} not found in watchlist for user {user_id}")
+            raise HTTPException(status_code=404, detail="Stock not found in watchlist")
+        logger.info(f"Successfully removed {symbol} from watchlist for user {user_id}")
+        return {"message": "Stock removed from watchlist", "success": True}
+    except Exception as e:
+        logger.error(f"Error removing stock from watchlist: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/stock/watchlist/{user_id}")
+async def get_stocks_in_watchlist(user_id: int):
+    logger.info(f"Fetching watchlist for user: {user_id}")
+    try:
+        watchlist = get_user_watchlist(user_id)
+        logger.info(f"Retrieved {len(watchlist)} stocks for user {user_id}")
+        return {"watchlist": watchlist, "success": True}
+    except Exception as e:
+        logger.error(f"Error fetching watchlist: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Export the router
 app = router 
+
+def check_database_contents():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Query stocks table
+        cursor.execute('SELECT * FROM stocks')
+        stocks = cursor.fetchall()
+        print("Stocks table contents:")
+        for stock in stocks:
+            print(dict(stock))
+        
+        # Query watchlist table
+        cursor.execute('SELECT * FROM watchlist')
+        watchlist = cursor.fetchall()
+        print("Watchlist table contents:")
+        for entry in watchlist:
+            print(dict(entry))
+
+if __name__ == "__main__":
+    check_database_contents() 

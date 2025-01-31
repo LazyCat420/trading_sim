@@ -4,6 +4,7 @@ import stock_api
 from trading.api import router as trading_router
 import tools
 import logging
+from database import init_db
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +27,9 @@ app.include_router(trading_router, prefix="/trading", tags=["trading"])
 
 # Include the chat/search routes
 app.include_router(tools.app, prefix="/chat")
+
+# Initialize the database
+init_db()
 
 @app.get("/")
 async def root():

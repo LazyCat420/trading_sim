@@ -19,61 +19,6 @@ def create_connection():
     conn.row_factory = sqlite3.Row  # This allows accessing columns by name
     return conn
 
-# Initialize database
-def init_db():
-    logger.info("Initializing database...")
-    conn = create_connection()
-    c = conn.cursor()
-    
-    # Create stocks table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS stocks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT UNIQUE NOT NULL,
-            name TEXT,
-            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_price REAL,
-            last_updated TIMESTAMP,
-            is_active INTEGER DEFAULT 1
-        )
-    ''')
-    
-    # Create users table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Create watchlist table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS watchlist (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            stock_id INTEGER NOT NULL,
-            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id),
-            FOREIGN KEY (stock_id) REFERENCES stocks (id),
-            UNIQUE(user_id, stock_id)
-        )
-    ''')
-    
-    # Create default user if it doesn't exist
-    c.execute('SELECT id FROM users WHERE id = 1')
-    if not c.fetchone():
-        logger.info("Creating default user...")
-        c.execute('''
-            INSERT INTO users (id, email, password_hash)
-            VALUES (1, 'default@example.com', 'default')
-        ''')
-    
-    conn.commit()
-    logger.info("Database initialized successfully")
-    conn.close()
-
 # Context manager for database connections
 @contextmanager
 def get_db():
@@ -84,7 +29,48 @@ def get_db():
         conn.close()
 
 # Initialize the database when module is imported
-init_db()
+def init_db():
+    """Initialize the database with required tables"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Create users table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create stocks table with UNIQUE constraint on symbol
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS stocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT UNIQUE NOT NULL,
+                name TEXT,
+                last_price REAL,
+                last_updated TIMESTAMP,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create watchlist table with composite UNIQUE constraint
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS watchlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                stock_id INTEGER NOT NULL,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, stock_id),
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (stock_id) REFERENCES stocks(id)
+            )
+        ''')
+        
+        conn.commit()
+        logger.info("Database initialized successfully")
 
 # Function to reset the database (for testing/debugging)
 def reset_database():
@@ -113,60 +99,51 @@ def get_user_by_email(email: str):
         return cursor.fetchone()
 
 # Watchlist related functions
-def add_to_watchlist(user_id: int, stock_symbol: str) -> bool:
+def add_to_watchlist(user_id: int, stock_symbol: str, stock_name: str = None, last_price: float = None, last_updated: str = None):
     with get_db() as conn:
-        cursor = conn.cursor()
         try:
-            print(f"Adding stock {stock_symbol} to watchlist for user {user_id}")
-            # Get stock_id (create if doesn't exist)
-            cursor.execute('SELECT id, is_active FROM stocks WHERE symbol = ?', (stock_symbol,))
+            cursor = conn.cursor()
+            logger.info(f"[ADD_TO_WATCHLIST] Adding {stock_symbol} for user {user_id}")
+            
+            # First, insert or update the stock in stocks table
+            cursor.execute('''
+                INSERT INTO stocks (symbol, name, last_price, last_updated)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    name = COALESCE(?, stocks.name),
+                    last_price = ?,
+                    last_updated = ?
+            ''', (stock_symbol, stock_name, last_price, last_updated, stock_name, last_price, last_updated))
+            
+            # Get the stock ID
+            cursor.execute('SELECT id FROM stocks WHERE symbol = ?', (stock_symbol,))
             stock = cursor.fetchone()
             if not stock:
-                print(f"Stock {stock_symbol} not found, creating new entry")
-                cursor.execute(
-                    'INSERT INTO stocks (symbol, is_active) VALUES (?, 1)',
-                    (stock_symbol,)
-                )
-                stock_id = cursor.lastrowid
-            else:
-                stock_id = stock['id']
-                # Reactivate the stock if it was inactive
-                if not stock['is_active']:
-                    print(f"Reactivating stock {stock_symbol}")
-                    cursor.execute(
-                        'UPDATE stocks SET is_active = 1 WHERE id = ?',
-                        (stock_id,)
-                    )
-            
-            # Check if stock is already in watchlist
-            cursor.execute(
-                'SELECT 1 FROM watchlist WHERE user_id = ? AND stock_id = ?',
-                (user_id, stock_id)
-            )
-            if cursor.fetchone():
-                print(f"Stock {stock_symbol} already in watchlist for user {user_id}")
+                logger.error(f"[ADD_TO_WATCHLIST] Failed to get stock ID for {stock_symbol}")
                 return False
             
+            stock_id = stock['id']
+            
             # Add to watchlist
-            print(f"Adding stock {stock_symbol} (id: {stock_id}) to watchlist")
-            cursor.execute(
-                'INSERT INTO watchlist (user_id, stock_id) VALUES (?, ?)',
-                (user_id, stock_id)
-            )
+            cursor.execute('''
+                INSERT INTO watchlist (user_id, stock_id)
+                VALUES (?, ?)
+                ON CONFLICT(user_id, stock_id) DO NOTHING
+            ''', (user_id, stock_id))
+            
             conn.commit()
+            logger.info(f"[ADD_TO_WATCHLIST] Successfully added {stock_symbol}")
             return True
-        except sqlite3.IntegrityError as e:
-            print(f"IntegrityError adding stock {stock_symbol}: {str(e)}")
-            return False
+            
         except Exception as e:
-            print(f"Error adding stock {stock_symbol}: {str(e)}")
-            raise
+            logger.error(f"[ADD_TO_WATCHLIST] Error: {str(e)}", exc_info=True)
+            conn.rollback()
+            return False
 
 def clear_watchlist(user_id: int):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute('DELETE FROM watchlist WHERE user_id = ?', (user_id,))
-        cursor.execute('UPDATE stocks SET is_active = 0')
         conn.commit()
         logger.info(f"Cleared watchlist for user {user_id}")
 
@@ -184,21 +161,11 @@ def remove_from_watchlist(user_id: int, stock_symbol: str) -> bool:
                 
             stock_id = stock['id']
             
-            # Then delete from watchlist
+            # Remove from watchlist
             cursor.execute('''
                 DELETE FROM watchlist 
                 WHERE user_id = ? AND stock_id = ?
             ''', (user_id, stock_id))
-            
-            # Update the stock's active status
-            cursor.execute('''
-                UPDATE stocks 
-                SET is_active = CASE 
-                    WHEN EXISTS (SELECT 1 FROM watchlist WHERE stock_id = ?) THEN 1 
-                    ELSE 0 
-                END 
-                WHERE id = ?
-            ''', (stock_id, stock_id))
             
             conn.commit()
             rows_affected = cursor.rowcount
@@ -212,20 +179,9 @@ def get_user_watchlist(user_id: int):
     with get_db() as conn:
         cursor = conn.cursor()
         
-        # First, let's log all stocks in the database
-        cursor.execute('SELECT * FROM stocks')
-        all_stocks = cursor.fetchall()
-        print("All stocks in database:", [dict(s) for s in all_stocks])
-        
-        # Now, let's log all watchlist entries
-        cursor.execute('SELECT * FROM watchlist WHERE user_id = ?', (user_id,))
-        all_watchlist = cursor.fetchall()
-        print("All watchlist entries for user:", [dict(w) for w in all_watchlist])
-        
-        # Get the watchlist with stock details
+        # Get watchlist with stock details - removed is_active condition since we use the watchlist table to track active stocks
         cursor.execute('''
-            SELECT DISTINCT s.symbol, s.name, s.last_price, 
-                   datetime(s.last_updated) as last_updated
+            SELECT s.symbol, s.name, s.last_price, s.last_updated
             FROM watchlist w
             JOIN stocks s ON w.stock_id = s.id
             WHERE w.user_id = ?
@@ -233,5 +189,82 @@ def get_user_watchlist(user_id: int):
         ''', (user_id,))
         
         watchlist = cursor.fetchall()
-        print("Final watchlist result:", [dict(w) for w in watchlist])
-        return watchlist 
+        logger.info(f"[GET_WATCHLIST] Found {len(watchlist)} stocks for user {user_id}")
+        
+        result = []
+        for item in watchlist:
+            result.append({
+                'symbol': item['symbol'],
+                'name': item['name'] or item['symbol'],
+                'last_price': item['last_price'] or 0.0,
+                'last_updated': item['last_updated'] or datetime.utcnow().isoformat()
+            })
+        
+        return result
+
+# Add after get_user_watchlist function
+def diagnose_watchlist(user_id: int):
+    """Diagnostic function to check watchlist state"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        logger.info("=== WATCHLIST DIAGNOSTIC START ===")
+        
+        # Check stocks table
+        cursor.execute('SELECT * FROM stocks')
+        stocks = cursor.fetchall()
+        logger.info("All stocks in database:")
+        for stock in stocks:
+            logger.info(f"Stock: {dict(stock)}")
+            
+        # Check watchlist entries
+        cursor.execute('''
+            SELECT w.*, s.symbol, s.name, s.is_active 
+            FROM watchlist w
+            LEFT JOIN stocks s ON w.stock_id = s.id
+            WHERE w.user_id = ?
+        ''', (user_id,))
+        entries = cursor.fetchall()
+        logger.info(f"Watchlist entries for user {user_id}:")
+        for entry in entries:
+            logger.info(f"Entry: {dict(entry)}")
+            
+        # Check for orphaned entries
+        cursor.execute('''
+            SELECT w.* 
+            FROM watchlist w 
+            LEFT JOIN stocks s ON w.stock_id = s.id 
+            WHERE s.id IS NULL AND w.user_id = ?
+        ''', (user_id,))
+        orphans = cursor.fetchall()
+        if orphans:
+            logger.warning(f"Found orphaned watchlist entries: {[dict(o) for o in orphans]}")
+            
+        logger.info("=== WATCHLIST DIAGNOSTIC END ===")
+        
+        return {
+            'stocks': [dict(s) for s in stocks],
+            'watchlist': [dict(e) for e in entries],
+            'orphans': [dict(o) for o in orphans] if orphans else []
+        }
+
+def log_database_contents():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Log stocks table
+        cursor.execute('SELECT * FROM stocks')
+        stocks = cursor.fetchall()
+        logger.info("Stocks table contents:")
+        for stock in stocks:
+            logger.info(dict(stock))
+        
+        # Log watchlist table
+        cursor.execute('SELECT * FROM watchlist')
+        watchlist = cursor.fetchall()
+        logger.info("Watchlist table contents:")
+        for entry in watchlist:
+            logger.info(dict(entry)) 
+
+# Initialize the database when module is imported
+init_db() 
