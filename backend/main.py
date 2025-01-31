@@ -21,12 +21,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include routers - mount stock_api first as it has the detailed endpoint
 app.include_router(stock_api.router, prefix="/stock", tags=["stock"])
+app.include_router(tools.router, prefix="/stock", tags=["stock"])  # Mount watchlist routes under /stock
 app.include_router(trading_router, prefix="/trading", tags=["trading"])
-
-# Include the chat/search routes
-app.include_router(tools.app, prefix="/chat")
 
 # Initialize the database
 init_db()

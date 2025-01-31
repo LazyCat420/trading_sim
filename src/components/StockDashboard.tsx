@@ -136,31 +136,54 @@ export default function StockDashboard() {
         const data = await response.json();
         console.log('Watchlist response data:', data);
         
-        if (response.ok) {
+        if (response.ok && data.watchlist) {
           // Convert watchlist data to StockData format
           console.log('Fetching individual stock data...');
           const stocksData = await Promise.all(
-            data.map(async (item: any) => {
+            data.watchlist.map(async (item: any) => {
               console.log('Fetching data for stock:', item.symbol);
-              const stockResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/detailed/${item.symbol}`);
-              const rawData = await stockResponse.json();
-              console.log('Stock data for', item.symbol, ':', rawData);
-              
-              // Transform the detailed data into StockData format
-              return {
-                symbol: item.symbol.toUpperCase(),
-                price: rawData.valuation.pc || 0,
-                change: rawData.technical.change || 0,
-                changePercent: rawData.technical.changePercent || 0,
-                volume: rawData.technical.volume || 0,
-                marketCap: parseFloat(rawData.marketData.marketCap) || 0,
-                shortName: rawData.marketData.shortName || item.symbol,
-                longName: rawData.marketData.longName || item.symbol,
-                peRatio: rawData.valuation.pe || 0,
-                dividendYield: parseFloat(rawData.marketData.dividendYield) || 0,
-                fiftyTwoWeekHigh: rawData.technical.fiftyTwoWeekHigh || 0,
-                fiftyTwoWeekLow: rawData.technical.fiftyTwoWeekLow || 0
-              };
+              try {
+                const stockResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/detailed/${item.symbol}`);
+                if (!stockResponse.ok) {
+                  console.error(`Failed to fetch data for ${item.symbol}:`, stockResponse.status);
+                  // Return basic data if detailed fetch fails
+                  return {
+                    symbol: item.symbol.toUpperCase(),
+                    price: item.last_price || 0,
+                    change: 0,
+                    changePercent: 0,
+                    shortName: item.name || item.symbol
+                  };
+                }
+                const rawData = await stockResponse.json();
+                console.log('Stock data for', item.symbol, ':', rawData);
+                
+                // Transform the detailed data into StockData format
+                return {
+                  symbol: item.symbol.toUpperCase(),
+                  price: rawData.valuation.pc || item.last_price || 0,
+                  change: rawData.technical.change || 0,
+                  changePercent: rawData.technical.changePercent || 0,
+                  volume: rawData.technical.volume || 0,
+                  marketCap: rawData.marketData.marketCap || 0,
+                  shortName: rawData.marketData.shortName || item.name || item.symbol,
+                  longName: rawData.marketData.longName || item.name || item.symbol,
+                  peRatio: rawData.valuation.pe || 0,
+                  dividendYield: rawData.marketData.dividendYield || 0,
+                  fiftyTwoWeekHigh: rawData.technical.fiftyTwoWeekHigh || 0,
+                  fiftyTwoWeekLow: rawData.technical.fiftyTwoWeekLow || 0
+                };
+              } catch (error) {
+                console.error(`Error fetching data for ${item.symbol}:`, error);
+                // Return basic data if fetch fails
+                return {
+                  symbol: item.symbol.toUpperCase(),
+                  price: item.last_price || 0,
+                  change: 0,
+                  changePercent: 0,
+                  shortName: item.name || item.symbol
+                };
+              }
             })
           );
           const filteredStocks = stocksData.filter((stock: StockData | null) => stock !== null);

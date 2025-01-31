@@ -508,6 +508,83 @@ async def get_stock_data(symbol: str):
         logger.error(f"Error fetching stock data for {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch stock data: {str(e)}")
 
+@router.get("/detailed/{symbol}")
+@retry_on_failure(max_retries=3, delay=1)
+async def get_detailed_stock_data(symbol: str):
+    try:
+        formatted_symbol = format_symbol(symbol)
+        logger.info(f"Fetching detailed data for symbol: {formatted_symbol}")
+        
+        stock = yf.Ticker(formatted_symbol)
+        info = stock.info
+        
+        if not info:
+            logger.error(f"No info data found for {formatted_symbol}")
+            raise HTTPException(status_code=404, detail=f"No data found for symbol {symbol}")
+
+        # Get current price and calculate changes
+        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+        previous_close = info.get('previousClose', info.get('regularMarketPreviousClose', 0))
+        change = current_price - previous_close if previous_close else 0
+        change_percent = (change / previous_close * 100) if previous_close else 0
+
+        # Market Data
+        market_data = {
+            'marketCap': info.get('marketCap', 0),  # Return raw number
+            'income': info.get('totalRevenue', 0),  # Return raw number
+            'revenue': info.get('totalRevenue', 0),  # Return raw number
+            'bookValue': info.get('bookValue', 0),
+            'cashPerShare': info.get('totalCashPerShare', 0),
+            'dividendYield': info.get('dividendYield', 0),
+            'employees': info.get('fullTimeEmployees', 0),
+            'shortName': info.get('shortName', symbol),
+            'longName': info.get('longName', symbol)
+        }
+
+        # Valuation
+        valuation = {
+            'pe': info.get('trailingPE', 0),
+            'forwardPE': info.get('forwardPE', 0),
+            'peg': info.get('pegRatio', 0),
+            'ps': info.get('priceToSalesTrailing12Months', 0),
+            'pb': info.get('priceToBook', 0),
+            'pc': current_price,
+            'pfcf': info.get('pfcf', 0),
+            'quickRatio': info.get('quickRatio', 0),
+            'currentRatio': info.get('currentRatio', 0),
+            'debtEq': info.get('debtToEquity', 0)
+        }
+
+        # Technical
+        technical = {
+            'rsi': info.get('rsi14d', 0),
+            'relVolume': info.get('volume', 0),
+            'volume': info.get('volume', 0),
+            'shortFloat': info.get('shortPercentOfFloat', 0) * 100 if info.get('shortPercentOfFloat') else 0,
+            'beta': info.get('beta', 0),
+            'change': change,
+            'changePercent': change_percent,
+            'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 0),
+            'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 0),
+            'targetPrice': info.get('targetMeanPrice', 0)
+        }
+
+        detailed_data = {
+            'marketData': market_data,
+            'valuation': valuation,
+            'technical': technical
+        }
+
+        logger.info("Detailed data:")
+        logger.info(detailed_data)
+
+        return detailed_data
+
+    except Exception as e:
+        logger.error(f"Error fetching detailed data for {symbol}: {str(e)}")
+        logger.exception("Full traceback:")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Export the router instead of app
 app = router
 

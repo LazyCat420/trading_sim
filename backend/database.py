@@ -69,6 +69,14 @@ def init_db():
             )
         ''')
         
+        # Create default user if it doesn't exist
+        cursor.execute('SELECT id FROM users WHERE id = 1')
+        if not cursor.fetchone():
+            cursor.execute('''
+                INSERT INTO users (id, email, password_hash)
+                VALUES (1, 'default@example.com', 'default_hash')
+            ''')
+        
         conn.commit()
         logger.info("Database initialized successfully")
 

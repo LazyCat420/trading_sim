@@ -111,7 +111,7 @@ async def chat_endpoint(message: ChatMessage):
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
-@router.post("/stock/watchlist/{user_id}/add")
+@router.post("/watchlist/{user_id}/add")
 async def add_stock_to_watchlist(user_id: int, item: WatchlistItem):
     logger.info(f"Adding stock to watchlist - User: {user_id}, Symbol: {item.symbol}")
     try:
@@ -126,7 +126,7 @@ async def add_stock_to_watchlist(user_id: int, item: WatchlistItem):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/stock/watchlist/{user_id}/remove/{symbol}")
+@router.delete("/watchlist/{user_id}/remove/{symbol}")
 async def remove_stock_from_watchlist(user_id: int, symbol: str):
     logger.info(f"Removing stock from watchlist - User: {user_id}, Symbol: {symbol}")
     try:
@@ -141,7 +141,7 @@ async def remove_stock_from_watchlist(user_id: int, symbol: str):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/stock/watchlist/{user_id}")
+@router.get("/watchlist/{user_id}")
 async def get_stocks_in_watchlist(user_id: int):
     logger.info(f"Fetching watchlist for user: {user_id}")
     try:
@@ -153,8 +153,8 @@ async def get_stocks_in_watchlist(user_id: int):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
-# Export the router
-app = router 
+# Export the router instead of app
+__all__ = ['router']
 
 def check_database_contents():
     with get_db() as conn:
