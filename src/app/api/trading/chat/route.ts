@@ -28,51 +28,47 @@ interface SearchResult {
   }
 }
 
+interface SearchResponse {
+  results: SearchResult[]
+  total_results: number
+  query: string
+  response_text: string
+}
+
 async function searchBackend(query: string) {
   try {
     console.log('🔍 DEBUG: Searching via Python backend for:', query)
     
-    const response = await fetch(`${BACKEND_URL}/chat`, {
+    const response = await fetch(`${BACKEND_URL}/search/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content: `search ${query}`  // Format required by the Python backend
+        content: query,
+        num_results: 10,
+        search_type: 'news'
       })
     })
 
     if (!response.ok) {
-      throw new Error(`Backend search failed: ${response.status}`)
+      const error = await response.json()
+      console.error('❌ DEBUG: Search error details:', error)
+      throw new Error(error.detail?.message || `Backend search failed: ${response.status}`)
     }
 
-    const data = await response.json()
-    console.log('🔍 DEBUG: Raw backend response:', data)
+    const data = await response.json() as SearchResponse
+    console.log('🔍 DEBUG: Raw backend response:', JSON.stringify(data, null, 2))
 
-    // Parse the response text into structured results
-    if (data.response && typeof data.response === 'string') {
-      const results: SearchResult[] = []
-      const sections = data.response.split('\n\n')
-      
-      for (const section of sections) {
-        if (section.startsWith('Here are the search results:')) continue
-        
-        const lines = section.split('\n')
-        if (lines.length >= 3) {
-          const title = lines[0].replace(/^\d+\.\s*/, '')
-          const url = lines[1].replace('   URL: ', '')
-          const content = lines[2].replace('   ', '')
-          
-          results.push({
-            title,
-            url,
-            content,
-            source: 'searxng',
-            metadata: { type: 'news' }
-          })
-        }
-      }
-      
+    if (data.results && Array.isArray(data.results)) {
+      const results = data.results.map((result: SearchResult) => ({
+        title: result.title,
+        url: result.url,
+        content: result.content,
+        source: result.source || 'searxng',
+        metadata: result.metadata || { type: 'news' }
+      }))
+      console.log('🔍 DEBUG: Formatted search results:', JSON.stringify(results, null, 2))
       return results
     }
     

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import stock_api
 from trading.api import router as trading_router
-import tools
+from tools import router as tools_router
 import logging
 from database import init_db
 
@@ -21,10 +21,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers - mount stock_api first as it has the detailed endpoint
+# Include routers
 app.include_router(stock_api.router, prefix="/stock", tags=["stock"])
-app.include_router(tools.router, prefix="/stock", tags=["stock"])  # Mount watchlist routes under /stock
 app.include_router(trading_router, prefix="/trading", tags=["trading"])
+app.include_router(tools_router, tags=["tools"])  # This includes search and other tools
 
 # Initialize the database
 init_db()

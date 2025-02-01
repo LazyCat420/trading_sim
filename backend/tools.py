@@ -30,8 +30,9 @@ async def search_searxng(query: str, instance_url: str = "http://localhost:70") 
         searx = SearxSearchWrapper(searx_host=instance_url)
         
         try:
+            logger.info(f"Executing searx search with query: {query}")
             raw_results = searx.results(query, num_results=10)
-            logger.info(f"Raw search results received. Type: {type(raw_results)}")
+            logger.info(f"Raw search results received: {json.dumps(raw_results, indent=2)}")
         except Exception as search_error:
             logger.error(f"Error during searx.results call: {str(search_error)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -56,12 +57,13 @@ async def search_searxng(query: str, instance_url: str = "http://localhost:70") 
                         }
                     }
                     formatted_results.append(formatted_result)
-                    logger.debug(f"Formatted result: {formatted_result}")
+                    logger.debug(f"Formatted result: {json.dumps(formatted_result, indent=2)}")
             except Exception as format_error:
                 logger.error(f"Error formatting result {result}: {str(format_error)}")
                 continue
-        
+                
         logger.info(f"Successfully formatted {len(formatted_results)} results")
+        logger.info(f"Final formatted results: {json.dumps(formatted_results, indent=2)}")
         return formatted_results
                 
     except Exception as e:
@@ -75,37 +77,26 @@ async def chat_endpoint(message: ChatMessage):
     Handle chat messages and detect search commands
     """
     try:
-        content = message.content.strip().lower()
+        content = message.content.strip()
         logger.info(f"Received chat message: {content}")
         
-        # Check if message starts with "search"
-        if content.startswith("search"):
-            # Extract the search query (everything after "search")
-            query = content[6:].strip()
-            if not query:
-                logger.warning("Empty search query received")
-                return {"response": "Please provide a search query after 'search'"}
-                
-            # Perform the search
-            logger.info(f"Processing search query: {query}")
-            search_results = await search_searxng(query)
-            
-            if not search_results:
-                return {"response": "No results found for your search query."}
-            
-            # Format the response in a chat-friendly way
-            response_text = "Here are the search results:\n\n"
-            for idx, result in enumerate(search_results, 1):
-                response_text += f"{idx}. {result['title']}\n"
-                response_text += f"   URL: {result['url']}\n"
-                response_text += f"   {result['content']}\n\n"
-            
-            logger.info("Successfully formatted search results")
-            return {"response": response_text}
-            
-        logger.info("Message was not a search command")
-        return {"response": "Message must start with 'search' to perform a search"}
+        # Perform the search directly without checking for 'search' prefix
+        logger.info(f"Processing search query: {content}")
+        search_results = await search_searxng(content)
         
+        if not search_results:
+            return {"response": "No results found for your search query."}
+        
+        # Format the response in a chat-friendly way
+        response_text = "Here are the search results:\n\n"
+        for idx, result in enumerate(search_results, 1):
+            response_text += f"{idx}. {result['title']}\n"
+            response_text += f"   URL: {result['url']}\n"
+            response_text += f"   {result['content']}\n\n"
+        
+        logger.info("Successfully formatted search results")
+        return {"response": response_text}
+            
     except Exception as e:
         logger.error(f"Chat endpoint error: {str(e)}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
