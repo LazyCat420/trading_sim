@@ -136,11 +136,11 @@ export default function StockDashboard() {
         const data = await response.json();
         console.log('Watchlist response data:', data);
         
-        if (response.ok && data.watchlist) {
+        if (response.ok && data.items) {
           // Convert watchlist data to StockData format
           console.log('Fetching individual stock data...');
           const stocksData = await Promise.all(
-            data.watchlist.map(async (item: any) => {
+            data.items.map(async (item: any) => {
               console.log('Fetching data for stock:', item.symbol);
               try {
                 const stockResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/stock/detailed/${item.symbol}`);
@@ -191,7 +191,7 @@ export default function StockDashboard() {
           setStockPrices(filteredStocks);
           setWatchlist(filteredStocks.map(stock => stock.symbol));
         } else {
-          console.error('Failed to load watchlist:', data.error);
+          console.error('Failed to load watchlist:', data.error || 'Unknown error');
           setError(data.error || 'Failed to load watchlist');
         }
       } catch (error) {
@@ -496,16 +496,12 @@ export default function StockDashboard() {
       const responseData = await response.json();
       console.log('handleAddStock - Watchlist add response data:', responseData);
 
-      // Only update state if the backend transaction was successful
-      if (responseData.success) {
-        setStockPrices(prev => [...prev, stockData]);
-        setWatchlist(prev => [...prev, symbol]);
-        setSearchSymbol('');
-        await handleStockSelect(symbol);
-        console.log('handleAddStock - Successfully added stock');
-      } else {
-        throw new Error('Failed to add stock to watchlist');
-      }
+      // Update state with the new stock data
+      setStockPrices(prev => [...prev, stockData]);
+      setWatchlist(prev => [...prev, symbol]);
+      setSearchSymbol('');
+      await handleStockSelect(symbol);
+      console.log('handleAddStock - Successfully added stock');
     } catch (error) {
       console.error('handleAddStock - Error:', error);
       setError(error instanceof Error ? error.message : 'Failed to add stock');

@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import stock_api
 from trading.api import router as trading_router
-from tools import router as tools_router
+from tools.watchlist import router as watchlist_router
+from tools.searxng_search import router as search_router
 import logging
 from database import init_db
 
@@ -23,8 +24,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(stock_api.router, prefix="/stock", tags=["stock"])
+app.include_router(watchlist_router, prefix="/stock/watchlist", tags=["watchlist"])
+app.include_router(search_router, prefix="/search", tags=["search"])
 app.include_router(trading_router, prefix="/trading", tags=["trading"])
-app.include_router(tools_router, tags=["tools"])  # This includes search and other tools
 
 # Initialize the database
 init_db()
