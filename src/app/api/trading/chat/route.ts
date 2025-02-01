@@ -37,8 +37,6 @@ interface SearchResponse {
 
 async function searchBackend(query: string) {
   try {
-    console.log('🔍 DEBUG: Searching via Python backend for:', query)
-    
     const response = await fetch(`${BACKEND_URL}/search/search`, {
       method: 'POST',
       headers: {
@@ -53,12 +51,10 @@ async function searchBackend(query: string) {
 
     if (!response.ok) {
       const error = await response.json()
-      console.error('❌ DEBUG: Search error details:', error)
       throw new Error(error.detail?.message || `Backend search failed: ${response.status}`)
     }
 
     const data = await response.json() as SearchResponse
-    console.log('🔍 DEBUG: Raw backend response:', JSON.stringify(data, null, 2))
 
     if (data.results && Array.isArray(data.results)) {
       const results = data.results.map((result: SearchResult) => ({
@@ -68,13 +64,11 @@ async function searchBackend(query: string) {
         source: result.source || 'searxng',
         metadata: result.metadata || { type: 'news' }
       }))
-      console.log('🔍 DEBUG: Formatted search results:', JSON.stringify(results, null, 2))
       return results
     }
     
     return []
   } catch (error) {
-    console.error('❌ DEBUG: Backend search error:', error)
     return []
   }
 }
@@ -82,17 +76,14 @@ async function searchBackend(query: string) {
 async function askOllama(userQuery: string, contextData: { context: string, analysis: any }) {
   const { context, analysis } = contextData
   
-  // Adjust the prompt based on query type
-  let enhancedPrompt = ''
-  if (analysis.queryType === 'HISTORY_QUERY') {
-    enhancedPrompt = `Based on the following chat history, provide a summary of our discussion:\n\n${context}\n\nPlease summarize: ${userQuery}`
-  } else if (analysis.queryType === 'FOLLOW_UP') {
-    enhancedPrompt = `Using the previous context and market information below, answer the follow-up question:\n\n${context}\n\nQuestion: ${userQuery}`
-  } else if (analysis.queryType === 'MIXED') {
-    enhancedPrompt = `Based on our previous discussion and current market information:\n\n${context}\n\nPlease address: ${userQuery}\n\nMake sure to connect past discussion points with new information.`
-  } else {
-    enhancedPrompt = `Based on the following market information (and keeping in mind our previous context):\n\n${context}\n\nPlease answer: ${userQuery}`
-  }
+  // Build prompt with context and search info
+  const enhancedPrompt = `Here is our chat history and relevant information:
+
+${context}
+
+Question: ${userQuery}
+
+Please provide a helpful response based on this context.`
 
   const systemPrompt = `You are an expert trading assistant with deep knowledge of financial markets.
     You have access to real-time market data and can help with:
@@ -171,7 +162,6 @@ async function getSummary(query: string, context: string = '') {
     const data = await response.json()
     return data.summary
   } catch (error) {
-    console.error('❌ DEBUG: Summarize API error:', error)
     return null
   }
 }
@@ -181,7 +171,6 @@ async function fetchChatHistory() {
     // Return the last 50 messages to prevent context overflow
     return inMemoryChatHistory.slice(-50)
   } catch (error) {
-    console.error('❌ DEBUG: Error fetching chat history:', error)
     return []
   }
 }
@@ -206,7 +195,6 @@ async function storeChatMessage(role: 'user' | 'assistant', content: string) {
 
     return newMessage
   } catch (error) {
-    console.error('❌ DEBUG: Error storing chat message:', error)
     return null
   }
 }
@@ -243,7 +231,6 @@ async function analyzeHistoryRequest(query: string) {
     const data = await response.json()
     return JSON.parse(data.response)
   } catch (error) {
-    console.error('❌ DEBUG: Error analyzing history request:', error)
     // Default to summarize on error
     return { action: 'summarize', explanation: 'Default action due to error' }
   }
@@ -290,7 +277,6 @@ async function getContextualizedPrompt(userQuery: string, chatHistory: any[]) {
     const data = await response.json()
     return JSON.parse(data.response)
   } catch (error) {
-    console.error('❌ DEBUG: Error analyzing context needs:', error)
     return {
       queryType: 'NEW_TOPIC',
       explanation: 'Default to new topic due to error',
@@ -351,7 +337,6 @@ async function buildContext(contextAnalysis: any, userQuery: string) {
       analysis: contextAnalysis
     }
   } catch (error) {
-    console.error('❌ DEBUG: Error building context:', error)
     return {
       context: '',
       analysis: contextAnalysis
@@ -365,7 +350,6 @@ export async function GET() {
     const recentHistory = await fetchChatHistory()
     return NextResponse.json(recentHistory)
   } catch (error) {
-    console.error('❌ DEBUG: Error in GET history:', error)
     return NextResponse.json({ error: 'Failed to fetch chat history' }, { status: 500 })
   }
 }
@@ -373,7 +357,6 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    console.log('🔍 DEBUG: Chat request body:', body)
 
     // Check if this is a history management request
     if (body.type === 'clear_history') {
@@ -382,7 +365,6 @@ export async function POST(request: NextRequest) {
     }
 
     const userQuery = body.message || ''
-    console.log('🔍 DEBUG: User query:', userQuery)
 
     // Store user message in history
     await storeChatMessage('user', userQuery)
@@ -399,7 +381,6 @@ export async function POST(request: NextRequest) {
           
           for (const line of lines) {
             const data = JSON.parse(line)
-            console.log('✅ DEBUG: Received chunk:', data)
             
             // Store assistant's message in history when complete
             if (data.done && data.message?.content) {
@@ -418,22 +399,25 @@ export async function POST(request: NextRequest) {
             controller.enqueue(encoder.encode(JSON.stringify(formattedChunk)))
           }
         } catch (error) {
-          console.error('❌ DEBUG: Error processing chunk:', error)
+          // Silently handle errors to avoid debug spam
+          controller.enqueue(encoder.encode(JSON.stringify({
+            choices: [{
+              delta: { content: '' },
+              finish_reason: 'error'
+            }]
+          })))
         }
       },
     })
 
     // Get chat history for context analysis
     const chatHistory = await fetchChatHistory()
-    console.log('📚 DEBUG: Fetched chat history length:', chatHistory.length)
 
     // Analyze what type of context we need
     const contextAnalysis = await getContextualizedPrompt(userQuery, chatHistory)
-    console.log('🤔 DEBUG: Context analysis:', contextAnalysis)
 
     // Build appropriate context based on analysis
     const contextData = await buildContext(contextAnalysis, userQuery)
-    console.log('📝 DEBUG: Built context length:', contextData.context.length)
 
     // Get response from Ollama with the built context
     const response = await askOllama(userQuery, contextData)
@@ -448,7 +432,6 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('❌ DEBUG: API Route Error:', error)
     return NextResponse.json(
       { 
         error: 'Failed to process chat message', 

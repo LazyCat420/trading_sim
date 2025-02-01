@@ -25,8 +25,6 @@ export default function GlobalChat() {
     if (!input.trim() || isProcessing) return
 
     try {
-      console.log('🔍 DEBUG: Sending message:', input)
-      
       // Add user message
       const userMessageId = Date.now().toString()
       addMessage('user', input, { id: userMessageId })
@@ -50,11 +48,7 @@ export default function GlobalChat() {
         })
       })
 
-      console.log('🔍 DEBUG: Response status:', response.status)
-
       if (!response.ok) {
-        const error = await response.text()
-        console.error('❌ DEBUG: Chat error:', error)
         throw new Error('Failed to get response')
       }
 
@@ -75,7 +69,7 @@ export default function GlobalChat() {
         for (const line of lines) {
           try {
             const data = JSON.parse(line)
-            console.log('✅ DEBUG: Received chunk:', data)
+            
 
             if (data.choices?.[0]?.delta?.content) {
               const content = data.choices[0].delta.content
@@ -95,7 +89,6 @@ export default function GlobalChat() {
       scrollToBottom()
 
     } catch (error) {
-      console.error('❌ DEBUG: Chat error:', error)
       addMessage('system', 'Sorry, I encountered an error processing your request.', { id: Date.now().toString() })
     } finally {
       setIsProcessing(false)

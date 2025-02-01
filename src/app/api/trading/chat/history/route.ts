@@ -18,7 +18,6 @@ export async function GET() {
     const recentHistory = chatHistory.slice(-50)
     return NextResponse.json(recentHistory)
   } catch (error) {
-    console.error('❌ DEBUG: Error fetching chat history:', error)
     return NextResponse.json({ error: 'Failed to fetch chat history' }, { status: 500 })
   }
 }
@@ -53,7 +52,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(newMessage)
   } catch (error) {
-    console.error('❌ DEBUG: Error adding chat message:', error)
     return NextResponse.json(
       { error: 'Failed to add chat message' },
       { status: 500 }
@@ -66,7 +64,6 @@ export async function DELETE() {
     chatHistory = []
     return NextResponse.json({ message: 'Chat history cleared' })
   } catch (error) {
-    console.error('❌ DEBUG: Error clearing chat history:', error)
     return NextResponse.json(
       { error: 'Failed to clear chat history' },
       { status: 500 }
