@@ -6,6 +6,7 @@ import traceback
 import json
 import os
 from typing import List, Dict, Optional
+import aiohttp
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -43,9 +44,11 @@ async def search_endpoint(request: SearchRequest):
         
         # Configure search parameters
         search_params = {
-            "engines": "google news,yahoo news,bing news" if request.search_type == "news" else "google,bing,brave",
+            "engines": ["google", "bing", "duckduckgo"] if request.search_type != "news" else ["google news", "bing news"],
             "language": "en",
-            "format": "json"
+            "format": "json",
+            "time_range": "year",
+            "safesearch": 1
         }
         
         searx = SearxSearchWrapper(
